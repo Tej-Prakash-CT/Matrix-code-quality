@@ -1,0 +1,12 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# INTENTIONALLY EMPTY — No DAB-managed resources for this bundle.
+#
+# The Databricks App lifecycle (create / deploy / start / stop) is managed
+# exclusively by the CI/CD pipeline:
+#   .github/workflows/deploy-dashboard.yml
+#   → databricks apps deploy "abdi-quality" --source-code-path /Workspace/Shared/abdi-quality
+#
+# DO NOT add an apps: resource block here.
+# DAB will attempt to reconcile (delete + recreate) the app on every
+# `databricks bundle deploy`, which destroys the running instance.
+# ──────────────────────────────────────────────────────────────────────────────

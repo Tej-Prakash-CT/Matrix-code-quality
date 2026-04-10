@@ -1,0 +1,10 @@
+name: Code Quality Scan
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  call-code-quality-template:
+    uses: ./.github/workflows/code-quality-template.yml
+    secrets: inherit

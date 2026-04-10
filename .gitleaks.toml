@@ -1,0 +1,35 @@
+# .gitleaks.toml
+# Place in repo root. Suppresses known false positives for the ABDI project.
+
+title = "ABDI Gitleaks Config"
+
+[allowlist]
+  description = "Suppress known false positives"
+
+  # ── Paths to skip entirely ──────────────────────────────────────────────
+  paths = [
+    # CI workflow files — managed by DevOps team
+    '''\.github/.*''',
+    # Databricks job/task resource YAMLs — task IDs not credentials
+    '''resources/.*''',
+    # Documentation — contains example/fake credentials only
+    '''README\.md''',
+    '''README\..*''',
+    # DAB bundle config — references env vars, not hardcoded secrets
+    '''databricks\.yml''',
+    '''\.yamllint\.yml''',
+  ]
+
+  # ── Known fake/example credential values ────────────────────────────────
+  # These are well-known placeholder values used in documentation
+  regexes = [
+  
+    # cafebabe:deadbeef — standard programmer hex placeholder
+    '''cafebabe.*deadbeef''',
+    # Databricks job/task naming convention: Bronze_CD731_DCBQ292 etc.
+    '''(Bronze|Silver|Gold|Platinum)_[A-Z0-9_]{3,}''',
+    # Pipeline status codes used in DAB YAML job definitions
+    '''[A-Z]{2,}[0-9]+_(FAILURE|SUCCESS|SKIP|WARNING|ABORT)[_A-Z]*''',
+    # Databricks table/schema naming patterns (not credentials)
+    '''abs_(dev|uat|staging|prod)\.[a-z_]+\.[A-Z0-9_]+''',
+  ]

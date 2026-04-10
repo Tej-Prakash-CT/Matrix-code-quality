@@ -1,0 +1,115 @@
+[sqlfluff]
+# ---------------------------------------------------------------------------
+# Section 6.2 – Dialect
+# Target platform: Databricks (SparkSQL)
+# ---------------------------------------------------------------------------
+dialect = sparksql
+templater = raw
+large_file_skip_byte_limit = 0
+ 
+# ---------------------------------------------------------------------------
+# Section 8.1 – SQL Formatting Rules
+# Proper indentation: 4 spaces
+# ---------------------------------------------------------------------------
+indent_unit = space
+tab_space_size = 4
+ 
+# Max line length (aligned with Python standard from Section 7.1)
+max_line_length = 120
+ 
+# ---------------------------------------------------------------------------
+# Section 8.1 – Keyword & identifier case
+# SQL keywords → UPPERCASE  (LT10 / CP01)
+# Table / column names → UPPERCASE  (CP02 / CP03 / CP04 / CP05)
+# ---------------------------------------------------------------------------
+ 
+[sqlfluff:rules:capitalisation.keywords]
+# Section 8.1: "SQL keywords in UPPERCASE"
+capitalisation_policy = upper
+ 
+[sqlfluff:rules:capitalisation.identifiers]
+# Section 8.1 & 6.2: "Column and table name should be in upper case"
+# sqlfluff 4.x uses extended_capitalisation_policy for CP02 (identifiers)
+extended_capitalisation_policy = upper
+unquoted_identifiers_policy = all
+ 
+[sqlfluff:rules:capitalisation.functions]
+# Function names uppercase for consistency
+extended_capitalisation_policy = upper
+ 
+[sqlfluff:rules:capitalisation.literals]
+# NULL, TRUE, FALSE → UPPERCASE
+capitalisation_policy = upper
+ 
+[sqlfluff:rules:capitalisation.types]
+# Data type keywords uppercase (BIGINT, STRING, TIMESTAMP, etc.)
+extended_capitalisation_policy = upper
+ 
+# ---------------------------------------------------------------------------
+# Section 8.1 – Comma placement
+# "The comma to be added before the next column name" → leading commas
+# ---------------------------------------------------------------------------
+[sqlfluff:layout:type:comma]
+line_position = leading
+# No space after leading comma: ,COL_NAME not , COL_NAME
+spacing_after = touch
+ 
+# ---------------------------------------------------------------------------
+# Section 8.1 – Indentation & alignment
+# One clause keyword per line; SELECT columns on separate lines (4-space indent)
+# ---------------------------------------------------------------------------
+[sqlfluff:indentation]
+indented_joins = false
+indented_ctes = false
+indented_using_on = true
+template_blocks_indent = false
+indent_unit = space
+tab_space_size = 4
+ 
+# ---------------------------------------------------------------------------
+# Section 8.2 – JOIN Standards
+# "Explicit JOIN syntax used (no implicit joins)" → RF02 / AM05
+# "Aligned ON clauses in JOINs"
+# "Table aliases must be meaningful and descriptive (avoid a, b, t1…)" → AL01
+# ---------------------------------------------------------------------------
+[sqlfluff:rules:aliasing.table]
+aliasing = explicit
+ 
+[sqlfluff:rules:aliasing.column]
+aliasing = explicit
+ 
+[sqlfluff:rules:aliasing.expression]
+aliasing = explicit
+ 
+[sqlfluff:rules:ambiguous.join]
+fully_qualify_join_types = both
+ 
+# ---------------------------------------------------------------------------
+# Section 8.5 – SELECT Statement Best Practices
+# "No SELECT * in production code" → AM04
+# ---------------------------------------------------------------------------
+[sqlfluff:rules:ambiguous.column_references]
+group_by_and_order_by_style = explicit
+ 
+# ---------------------------------------------------------------------------
+# Section 8.4 – CTE Standards
+# CTEs used for complex queries; each CTE on its own named block
+# ---------------------------------------------------------------------------
+[sqlfluff:rules:structure.subquery]
+forbid_subquery_in = both
+ 
+# ---------------------------------------------------------------------------
+# Section 8.2 – Trailing comma in SELECT
+# ---------------------------------------------------------------------------
+[sqlfluff:rules:convention.select_trailing_comma]
+select_clause_trailing_comma = forbid
+ 
+# ---------------------------------------------------------------------------
+# Global rule exclusions
+# (Rules that conflict with leading-comma or Databricks-specific syntax)
+# ---------------------------------------------------------------------------
+[sqlfluff:rules]
+allow_scalar_subqueries_in = select
+exclude_rules =
+    AL04,
+    RF04

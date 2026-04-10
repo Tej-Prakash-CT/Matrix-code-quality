@@ -1,0 +1,129 @@
+name: Deploy Dashboard to Databricks Apps
+
+on:
+  push:
+    branches: [master, feature/matrix_v.1_new_ui]
+    paths:
+      - "src/**"
+      - "app.yaml"
+      - "aggregate_reports.py"
+
+  workflow_dispatch:          # allow manual re-deploy from the Actions tab
+
+concurrency:
+  group: deploy-dashboard
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: "Deploy Dashboard to Databricks Apps"
+    runs-on: [ np ]
+    environment: Dev
+    defaults:
+      run:
+        working-directory: .
+
+    env:
+      # ── App config (change these if app name or path ever changes) ────────
+      APP_NAME:           abdi-quality
+      # This workspace folder is created automatically by import-dir.
+      # It is separate from your DAB bundle path — Databricks Apps needs
+      # its own plain /Workspace folder, not the .bundle/ managed path.
+      APP_WORKSPACE_PATH: /Workspace/Shared/abdi-quality
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ── 2. Python setup ──────────────────────────────────────────────────
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      # ── 3. Install Python deps ─────────────────────────────────────────
+      - name: Install Python dependencies
+        run: pip install fastapi uvicorn databricks-sdk pydantic
+
+      # ── 4. Set up Node & bun ─────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install bun
+        run: npm install -g bun
+
+      # ── 5. Build frontend ────────────────────────────────────────────────
+      - name: Build frontend
+        run: |
+          cd src/abdi_quality/ui
+          bun install --frozen-lockfile || bun install
+          bun run build
+
+      # ── 6. Set HOME (self-hosted runner) ─────────────────────────────────
+      - name: Set HOME variable
+        run: |
+          mkdir -p /tmp/runner-home
+          echo "HOME=/tmp/runner-home" >> $GITHUB_ENV
+
+      # ── 7. Upload to Databricks Workspace ────────────────────────────────
+      - name: Upload source files to Databricks Workspace
+        env:
+          DATABRICKS_HOST:          ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID:     ${{ vars.DATABRICKS_CLIENT_ID || secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          echo "📤 Uploading dashboard source to $APP_WORKSPACE_PATH"
+
+          mkdir -p _deploy_staging/src/abdi_quality
+
+          # Backend Python source
+          cp -r src/abdi_quality/backend  _deploy_staging/src/abdi_quality/
+          cp src/__init__.py              _deploy_staging/src/
+          cp src/abdi_quality/__init__.py _deploy_staging/src/abdi_quality/
+
+          # Built frontend static files
+          # Vite outDir is "../../dist" relative to src/abdi_quality/ui/
+          # which resolves to src/dist/ (confirmed by vite.config.ts & router.py)
+          cp -r src/dist                  _deploy_staging/src/
+
+          # Python dependencies — Databricks Apps installs from this file at startup
+          cp requirements.txt             _deploy_staging/
+
+          # Config & aggregator
+          cp app.yaml                     _deploy_staging/
+          cp aggregate_reports.py         _deploy_staging/
+
+          databricks workspace import-dir \
+            _deploy_staging \
+            "$APP_WORKSPACE_PATH" \
+            --overwrite
+
+          echo "✅ Source uploaded to $APP_WORKSPACE_PATH"
+
+      # ── 8. Deploy / update the Databricks App ────────────────────────────
+      - name: Deploy Databricks App
+        env:
+          DATABRICKS_HOST:          ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID:     ${{ vars.DATABRICKS_CLIENT_ID || secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          echo "🚀 Deploying app: $APP_NAME"
+          echo "   Source path: $APP_WORKSPACE_PATH"
+
+          # If app doesn't exist yet this command creates + starts it.
+          # Subsequent runs update the source in-place (zero downtime).
+          databricks apps deploy "$APP_NAME" \
+            --source-code-path "$APP_WORKSPACE_PATH"
+
+          echo "✅ App deployed successfully"
+
+      # ── 9. Print live URL ─────────────────────────────────────────────────
+      - name: Print dashboard URL
+        run: |
+          echo ""
+          echo "🌐 Dashboard is live at:"
+          echo "   ${{ vars.DATABRICKS_HOST }}/apps/$APP_NAME"
+          echo ""

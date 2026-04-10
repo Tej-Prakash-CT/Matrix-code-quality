@@ -1,0 +1,72 @@
+[MAIN]
+recursive        = yes
+jobs             = 1
+suggestion-mode  = yes
+
+[MESSAGES CONTROL]
+# Disable checks that are noisy or irrelevant in a Databricks context
+disable =
+    C0114,   # missing-module-docstring   — notebooks aren't modules
+    C0115,   # missing-class-docstring    — relax for notebook code
+    C0116,   # missing-function-docstring — relax for notebook code
+    C0301,   # line-too-long             — notebooks commonly exceed 100 chars
+    C0303,   # trailing-whitespace       — nbconvert artefacts
+    C0411,   # wrong-import-order        — managed by isort separately
+    W0611,   # unused-import             — common in exploratory notebooks
+    W0104,   # pointless-statement       — display(), spark.show() etc.
+    W0106,   # expression-not-assigned   — common in notebooks
+    R0801,   # duplicate-code            — handled by jscpd
+    E0001,   # syntax-error              — false positive on Japanese/Unicode chars in comments
+    E0401,   # import-error              — pyspark/project utils not installed in CI env
+    W0401,   # wildcard-import           — common in notebooks
+
+# Treat these as errors (will FAIL the PR)
+enable =
+    E,       # all error-category messages
+    F        # all fatal-category messages
+
+[VARIABLES]
+# Databricks built-ins injected at runtime — not unknown variables
+additional-builtins =
+    spark,
+    dbutils,
+    display,
+    displayHTML,
+    sqlContext,
+    sc,
+    glueContext
+
+[TYPECHECK]
+# Suppress missing-member/import errors for Databricks/PySpark packages
+# These exist in the Databricks runtime but not in the CI environment
+ignored-modules =
+    pyspark,
+    pyspark.sql,
+    pyspark.sql.functions,
+    pyspark.sql.types,
+    databricks.sdk,
+    utilities,
+    utilities.common_util
+
+[FORMAT]
+max-line-length  = 120
+indent-string    = "    "
+
+[DESIGN]
+max-args         = 10
+max-attributes   = 15
+max-bool-expr    = 5
+max-branches     = 15
+max-locals       = 20
+max-returns      = 6
+max-statements   = 60
+min-public-methods = 0
+
+[REPORTS]
+output-format    = json
+score            = no
+reports          = no
+
+[SIMILARITIES]
+# Skip similarity checks — jscpd handles duplication
+min-similarity-lines = 999

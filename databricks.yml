@@ -1,0 +1,41 @@
+bundle:
+  name: abdi-quality
+
+# ── File sync only ────────────────────────────────────────────────────────────
+# This bundle manages file synchronisation to the Databricks workspace ONLY.
+# The Databricks App lifecycle is managed by CI/CD (deploy-dashboard.yml).
+# Running `databricks bundle deploy` will NOT touch the running App.
+
+sync:
+  exclude:
+    - node_modules/
+    - .github/
+    - .ruff_cache/
+    - mock_volume/
+    - "*.md"
+    - "*.bak"
+    - .pylintrc
+    - .gitleaks.toml
+    - .sqlfluff
+    - .gitattributes
+    - pyproject.toml
+    - __pycache__/
+    - "**/__pycache__/"
+    - src/abdi_quality/ui/node_modules/
+    - src/abdi_quality/ui/pages/
+    - src/abdi_quality/ui/routes/
+    - src/abdi_quality/ui/components/
+    - src/abdi_quality/ui/lib/
+    - src/abdi_quality/ui/*.tsx
+    - src/abdi_quality/ui/*.css
+    - src/abdi_quality/ui/*.html
+    - src/abdi_quality/ui/*.json
+    - src/abdi_quality/ui/*.ts
+    - src/abdi_quality/ui/bun.lock
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-2398c710-c869.cloud.databricks.com

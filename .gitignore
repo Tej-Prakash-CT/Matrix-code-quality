@@ -1,0 +1,79 @@
+# ── Local dev only ────────────────────────────────────────────────────────
+mock_volume/
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+build/
+*.egg
+.eggs/
+.mypy_cache/
+.ruff_cache/
+
+# ── Env / secrets ─────────────────────────────────────────────────────────
+.env
+.env.*
+*.env
+
+# ── OS / Editor ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.bak
+.claude/
+
+# ── CI artifacts (generated at runtime, never commit these) ───────────────
+*.log
+reports/
+coverage.xml
+.coverage
+htmlcov/
+junit.xml
+pr-*.json
+combined-report.json
+gitleaks-report.json
+gitleaks
+semgrep-report.json
+bandit-*.json
+bandit-report.json
+pylint-*.json
+pylint-report.json
+ruff-report.json
+sqlfluff-report.json
+pytest-report.json
+coverage.json
+jscpd-report/
+.notebook_converted/
+_deploy_staging/
+
+# ── Scratch / one-off helper scripts (not part of the app) ────────────────
+app copy.py
+dashboard-template.html
+create_mock.py
+update_yaml.py
+notebook-scanning-steps.yml
+
+# ── Node / Frontend ───────────────────────────────────────────────────────
+node_modules/
+src/abdi_quality/ui/node_modules/
+.vite/
+src/abdi_quality/ui/.vite/
+bun.lockb
+*.tsbuildinfo
+
+# ── Frontend build output ─────────────────────────────────────────────────
+# Vite outDir resolves to src/dist/ (2 levels up from src/abdi_quality/ui/)
+# This is NOT committed — it is built fresh by CI (deploy-dashboard.yml Step 5)
+src/dist/
+
+# ── Databricks bundle state (managed by Databricks CLI, not git) ──────────
+# .databricks/ already has its own internal .gitignore with *
+# Adding here as an extra safety net
+.databricks/bundle/
+.databricks

@@ -1,0 +1,172 @@
+[project]
+name = "agentic-development-framework"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "databricks-mcp-server",
+    "databricks-tools-core",
+    "teradata-mcp-server",
+    "pyspark>=4.0",
+    "pytest>=9.0",
+    "pytest-html>=4.0",
+    "pyyaml>=6.0",
+    "sqlfluff>=4.0",
+    "anthropic>=0.86.0",
+]
+ 
+[dependency-groups]
+dev = ["ruff>=0.8.0", "yamllint>=1.35.0"]
+ 
+[tool.uv.sources]
+databricks-mcp-server = { path = "ai-dev-kit/databricks-mcp-server", editable = true }
+databricks-tools-core = { path = "ai-dev-kit/databricks-tools-core", editable = true }
+teradata-mcp-server = { path = "teradata_mcp_server", editable = true }
+ 
+# =============================================================================
+# Ruff Configuration
+# Source: SOP_Autobacs_Naming___Coding_Convention_with_Databricks_Best_Practices_v1_2
+# Covers: Python Coding Standards (Sections 6.1, 7.1–7.6)
+# =============================================================================
+ 
+[tool.ruff]
+line-length = 120
+indent-width = 4
+target-version = "py311"
+exclude = [
+    "teradata_codebase/",
+    "ai-dev-kit/",
+    ".venv/",
+    "teradata_mcp_server/",
+]
+ 
+# ---------------------------------------------------------------------------
+# Section 7.1 – Import Organisation (isort rules)
+# Order: stdlib → third-party → local
+# ---------------------------------------------------------------------------
+[tool.ruff.lint.isort]
+known-third-party = ["pyspark", "pandas", "delta"]
+known-first-party = ["utilities", "config"]
+force-sort-within-sections = true
+lines-after-imports = 2
+ 
+# ---------------------------------------------------------------------------
+# Section 6.1 & 7.x – Enabled rule sets
+# ---------------------------------------------------------------------------
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors (Section 6.1: "must follow PEP 8")
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes – unused imports/variables
+    "I",    # isort – import ordering (Section 7.1)
+    "N",    # pep8-naming – naming conventions (Section 7.2)
+    "B",    # flake8-bugbear – common bug patterns
+    "ANN",  # flake8-annotations – type hint enforcement (Section 7.3)
+    "D",    # flake8-docstrings – Google-style docstrings (Section 7.4)
+    "SIM",  # flake8-simplify – code simplification
+    "G",    # flake8-logging-format – structured logging (Section 7.5)
+    "UP",   # Refurb / upgrade patterns
+    "RET",  # flake8-return
+    "S",    # flake8-bandit – no hardcoded secrets (Section 6.1: S105, S106)
+    "RUF",  # Ruff-specific rules
+]
+ignore = [
+    # Japanese Unicode — mandatory for 漢字/カタカナ/ひらがな text
+    "RUF001",  # ambiguous-unicode-character-string
+    "RUF002",  # ambiguous-unicode-character-docstring
+    "RUF003",  # ambiguous-unicode-character-comment
+    # Databricks notebook patterns
+    "F403",    # wildcard imports (from pyspark.sql.functions import *)
+    "F405",    # may be undefined from wildcard import
+    "E402",    # module-level import not at top (notebook cells)
+    "F821",    # undefined name (Databricks injected globals: spark, dbutils, display)
+    # pep8-naming exceptions for Databricks/PySpark conventions
+    "N812",    # lowercase imported as non-lowercase (import pyspark.sql.functions as F)
+    "N999",    # invalid module name (notebook files like DCBQ10010.py are uppercase)
+    # Docstring relaxations for data engineering
+    "D105",    # missing docstring in magic method
+    "D107",    # missing docstring in __init__
+    "D400",    # first line should end with period
+    # Type annotation relaxations
+    "ANN204",  # missing return type annotation for __init__
+    # Preserve framework conventions — {str(e)} is the standard error pattern
+    "UP031",   # use format specifiers instead of str() — keep {str(e)} for framework consistency
+    "UP032",   # use f-string instead of format call — keep {str(e)} for framework consistency
+    "RUF010",  # explicit-f-string-type-conversion — keep {str(e)} not {e!s} per framework convention
+]
+ 
+# ---------------------------------------------------------------------------
+# Section 7.2 – Naming Conventions
+# Classes → PascalCase, Functions → snake_case, Variables → snake_case
+# Constants → UPPER_SNAKE_CASE, Booleans → is_/has_/can_/should_ prefix
+# ---------------------------------------------------------------------------
+[tool.ruff.lint.pep8-naming]
+classmethod-decorators = ["classmethod"]
+ 
+# ---------------------------------------------------------------------------
+# Section 7.3 – Type Hints
+# ---------------------------------------------------------------------------
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
+suppress-none-returning = false
+ 
+# ---------------------------------------------------------------------------
+# Section 7.4 – Function Documentation (Google-style docstrings)
+# ---------------------------------------------------------------------------
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+ 
+# ---------------------------------------------------------------------------
+# Section 7.5 – Error Handling (bugbear extensions)
+# ---------------------------------------------------------------------------
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+ 
+# ---------------------------------------------------------------------------
+# Section 7.6 – Complexity
+# ---------------------------------------------------------------------------
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+ 
+# ---------------------------------------------------------------------------
+# Per-file ignores for Databricks notebook patterns
+# ---------------------------------------------------------------------------
+[tool.ruff.lint.per-file-ignores]
+"lakehouse_framework/src/pipeline/**/*.py" = [
+    "B018",    # useless-expression (notebook markdown cells)
+    "B904",    # raise-without-from-inside-except (framework uses raise ValueError(msg) without chaining)
+    "F401",    # unused import (typing imports required by framework convention)
+    "F841",    # unused variable (intermediate notebook cell results)
+    "E501",    # line too long (SQL strings)
+    "N806",    # variable in function should be lowercase (UPPERCASE_DF patterns)
+    "N802",    # function name should be lowercase (some legacy patterns)
+    "D100",    # missing docstring in public module (notebooks)
+    "D103",    # missing docstring in public function (notebooks)
+    "ANN001",  # missing type annotation for function argument (notebooks)
+    "ANN201",  # missing return type annotation (notebooks)
+    "S608",    # possible SQL injection (spark.sql(f"...") is standard Databricks pattern)
+    "G004",    # logging f-string (standard Databricks logger pattern)
+]
+"lakehouse_framework/src/database_object_deployment/*.py" = [
+    "B018",    # useless-expression (notebook markdown cells)
+    "D100",    # missing docstring in public module (notebooks)
+    "D103",    # missing docstring in public function (notebooks)
+    "ANN001",  # missing type annotation for function argument (notebooks)
+    "ANN201",  # missing return type annotation (notebooks)
+    "G004",    # logging f-string (standard Databricks logger pattern)
+]
+"lakehouse_framework/test/**/*.py" = [
+    "D100",    # missing docstring in public module
+    "D103",    # missing docstring in public function
+    "ANN001",  # missing type annotation for function argument
+    "ANN201",  # missing return type annotation
+]
+ 
+# ---------------------------------------------------------------------------
+# Section 7.1 – Formatter: 4 spaces, no tabs
+# ---------------------------------------------------------------------------
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
+line-ending = "auto"
+skip-magic-trailing-comma = false
+docstring-code-format = false
