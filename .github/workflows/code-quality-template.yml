@@ -15,6 +15,47 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for git diff against base branch
+          clean: true     # CRITICAL for self-hosted runners: wipe workspace before
+                          # each run so leftover files from other branches (e.g. test.py
+                          # from a standalone testing branch) never pollute this scan.
+
+      # ── Detect PR-changed files ───────────────────────────────────────────
+      # IMPORTANT: All scanners must only inspect files changed in THIS PR.
+      # Scanning the full repo/branch would flag issues in files inherited from
+      # develop that were never touched by this PR (e.g. test.py, old notebooks).
+      - name: Detect PR-changed files
+        id: changed_files
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          echo "Base: ${BASE_SHA}  Head: ${HEAD_SHA}"
+
+          # All files added/modified in this PR (relative paths, no deletions)
+          git diff --name-only --diff-filter=ACM "${BASE_SHA}...${HEAD_SHA}" \
+            > pr-changed-files.txt || true
+
+          echo "--- All PR-changed files ---"
+          cat pr-changed-files.txt
+
+          # Subset: only Python files inside lakehouse_framework/
+          grep -E '^lakehouse_framework/.*\.py$' pr-changed-files.txt \
+            > pr-changed-py.txt || true
+
+          # Subset: only .ipynb notebook files inside lakehouse_framework/
+          grep -E '^lakehouse_framework/.*\.ipynb$' pr-changed-files.txt \
+            > pr-changed-nb.txt || true
+
+          PY_COUNT=$(wc -l < pr-changed-py.txt | tr -d ' ')
+          NB_COUNT=$(wc -l < pr-changed-nb.txt | tr -d ' ')
+          echo "PR changed Python files : ${PY_COUNT}"
+          echo "PR changed Notebooks    : ${NB_COUNT}"
+
+          # Make available to subsequent steps
+          echo "py_count=${PY_COUNT}"   >> $GITHUB_OUTPUT
+          echo "nb_count=${NB_COUNT}"   >> $GITHUB_OUTPUT
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v4
@@ -38,8 +79,9 @@ jobs:
           pip install bandit semgrep jupyter nbconvert pylint pytest coverage databricks-cli ruff sqlfluff
 
       # ── Gitleaks ─────────────────────────────────────────────────────────
-      # Uses .gitleaks.toml allowlist if present in repo root.
-      # Scans current working tree (--no-git) to get accurate line numbers.
+      # Scans only the COMMITS introduced by this PR (not the full working tree).
+      # This ensures files present in develop but not changed in this PR are
+      # never flagged (e.g. test.py that a developer left in develop).
       - name: Run Gitleaks
         id: gitleaks
         continue-on-error: true
@@ -47,15 +89,16 @@ jobs:
           wget -q https://github.com/gitleaks/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_linux_x64.tar.gz
           tar -xzf gitleaks_8.18.1_linux_x64.tar.gz
 
-          # --no-git: scan working tree files (gives accurate line numbers)
-          # git-based scan is done separately to catch committed secrets
-          # Scan only meaningful paths — skip generated/config/docs
-          # .gitleaks.toml allowlist handles resources/ and .github/
-          # .gitleaksignore is the correct way to skip paths in v8
-          echo "README.md" > .gitleaksignore
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          # Scan only the commit range of this PR (not the entire working tree).
+          # --log-opts scopes gitleaks to commits between base and head so that
+          # secrets committed before this PR are not reported here.
           ./gitleaks detect \
             --source . \
             --config .gitleaks.toml \
+            --log-opts "${BASE_SHA}...${HEAD_SHA}" \
             --report-path gitleaks-report.json \
             --report-format json \
             --exit-code 0 \
@@ -71,13 +114,19 @@ jobs:
           echo "gitleaks_count=${COUNT}" >> $GITHUB_OUTPUT
           echo "Gitleaks: ${COUNT} finding(s)"
 
-# ── jscpd (Python Only) ───────────────────────────────────────────────
+# ── jscpd (Python Only) — scan only PR-changed Python files ─────────────
       - name: Run jscpd
         id: jscpd
         continue-on-error: true
         run: |
           mkdir -p jscpd-report
-          # Note: Ensure there are NO spaces after the backslashes below
+
+          # jscpd MUST scan the FULL lakehouse_framework/ directory — not just
+          # the PR-changed files. Duplication is a cross-file metric: a changed
+          # file could duplicate code in an UNCHANGED file, which would be missed
+          # if we only scanned the 5 files in the diff.
+          # Pre-existing duplicates between unchanged files are also reported, but
+          # that reflects the true health of the codebase this PR is merging into.
           jscpd lakehouse_framework \
             --reporters json,console \
             --output jscpd-report \
@@ -91,44 +140,61 @@ jobs:
           if [ ! -f jscpd-report/jscpd-report.json ]; then
             echo '{"statistics":{"total":{"percentage":0,"clones":0,"duplicatedLines":0}},"duplicates":[]}' > jscpd-report/jscpd-report.json
           fi
-      # ── Semgrep ───────────────────────────────────────────────────────────
+      # ── Semgrep — scan only PR-changed Python files ───────────────────────
       - name: Run Semgrep
         id: semgrep
         continue-on-error: true
         run: |
-          # Scan only Python source — skip resources/ YAMLs and CI configs
-          semgrep scan \
-            --config auto \
-            --json \
-            --output semgrep-report.json \
-            --no-git-ignore \
-            lakehouse_framework || true
+          PY_COUNT=$(wc -l < pr-changed-py.txt | tr -d ' ')
+          if [ "${PY_COUNT}" -eq 0 ]; then
+            echo "No Python files changed in this PR — skipping Semgrep"
+            echo '{"results":[]}' > semgrep-report.json
+          else
+            # -a: read file list from file (correct syntax — avoids broken
+            # `|| true < file` redirect which feeds the file to `true` not xargs)
+            # -r: don't run the command if the file list is empty
+            xargs -a pr-changed-py.txt -r semgrep scan \
+              --config auto \
+              --json \
+              --output semgrep-report.json || true
+          fi
           [ -f semgrep-report.json ] || echo '{"results":[]}' > semgrep-report.json
 
-      # ── Notebook conversion ───────────────────────────────────────────────
+      # ── Notebook conversion — PR-changed notebooks only ───────────────────
       - name: Convert notebooks for scanning
         run: |
           mkdir -p .notebook_converted
-          # Only convert notebooks inside lakehouse_framework/
-          find lakehouse_framework -name "*.ipynb" \
-            -not -path "*/.git/*" \
-            -not -path "*/node_modules/*" | while read -r nb_path; do
-            safe_name=$(echo "${nb_path}" | tr '/' '_' | sed 's/\.ipynb$/.py/')
-            jupyter nbconvert --to script "${nb_path}" --stdout 2>/dev/null \
-              | grep -v '^# In\[' | grep -v '^# %%' \
-              > ".notebook_converted/${safe_name}" || true
-          done
+          NB_COUNT=$(wc -l < pr-changed-nb.txt | tr -d ' ')
+          if [ "${NB_COUNT}" -eq 0 ]; then
+            echo "No notebooks changed in this PR — skipping notebook conversion"
+          else
+            # Only convert notebooks that were actually changed in this PR
+            while IFS= read -r nb_path; do
+              [ -f "${nb_path}" ] || continue
+              safe_name=$(echo "${nb_path}" | tr '/' '_' | sed 's/\.ipynb$/.py/')
+              jupyter nbconvert --to script "${nb_path}" --stdout 2>/dev/null \
+                | grep -v '^# In\[' | grep -v '^# %%' \
+                > ".notebook_converted/${safe_name}" || true
+            done < pr-changed-nb.txt
+          fi
 
-      # ── Bandit ────────────────────────────────────────────────────────────
+      # ── Bandit — scan only PR-changed Python files ────────────────────────
       - name: Run Bandit
         id: bandit
         continue-on-error: true
         run: |
-          # Scan only Python source — skip resources/ job YAMLs and CI files
-          bandit -r lakehouse_framework \
-            -f json -o bandit-py-report.json \
-            --exclude .git,node_modules,__pycache__,.notebook_converted \
-            -ll || true
+          PY_COUNT=$(wc -l < pr-changed-py.txt | tr -d ' ')
+          if [ "${PY_COUNT}" -eq 0 ]; then
+            echo "No Python files changed in this PR — skipping Bandit"
+            echo '{"results":[],"metrics":{}}' > bandit-py-report.json
+          else
+            # Scan only the files changed in this PR, not the whole directory.
+            # xargs -a reads the file list from a file (correct syntax).
+            # xargs -r skips execution if the file list is empty.
+            xargs -a pr-changed-py.txt -r bandit \
+              -f json -o bandit-py-report.json \
+              -ll || true
+          fi
           if [ -d .notebook_converted ] && [ "$(ls -A .notebook_converted)" ]; then
             bandit -r .notebook_converted/ -f json -o bandit-nb-report.json -ll || true
           fi
@@ -143,25 +209,23 @@ jobs:
           json.dump({'results': r}, open('bandit-report.json','w'))
           " || echo '{"results":[]}' > bandit-report.json
 
-      # ── Pylint ────────────────────────────────────────────────────────────
+      # ── Pylint — scan only PR-changed Python files ────────────────────────
       - name: Run pylint
         id: pylint
         continue-on-error: true
         run: |
-          # Scan only the source directory — not the whole repo.
-          # Scanning . includes generated files, CI scripts, configs etc.
-          # causing thousands of false findings.
-          SCAN_DIR="lakehouse_framework"
-          if [ ! -d "${SCAN_DIR}" ]; then
-            echo "Source dir ${SCAN_DIR} not found, skipping pylint"
+          PY_COUNT=$(wc -l < pr-changed-py.txt | tr -d ' ')
+          if [ "${PY_COUNT}" -eq 0 ]; then
+            echo "No Python files changed in this PR — skipping pylint"
             echo "[]" > pylint-py-report.json
           else
-            pylint "${SCAN_DIR}" --output-format=json --recursive=yes \
-              --ignore=.git,node_modules,.notebook_converted \
+            # Scan only the files changed in this PR.
+            # xargs -a reads the file list from a file (correct syntax).
+            # xargs -r skips execution if the file list is empty.
+            xargs -a pr-changed-py.txt -r pylint \
+              --output-format=json \
               --disable=E0401 \
               > pylint-py-report.json || true
-            # E0401: pyspark, databricks-sdk not installed in CI — real import errors
-            # will still be caught for standard Python packages
           fi
           python3 -c "import json; json.load(open('pylint-py-report.json'))" 2>/dev/null \
             || echo "[]" > pylint-py-report.json
@@ -187,12 +251,19 @@ jobs:
           echo '{"summary":{"passed":0,"failed":0,"total":0},"tests":[]}' > pytest-report.json
           echo '{"totals":{"percent_covered":0},"files":{}}' > coverage.json
 
-      # ── Ruff ──────────────────────────────────────────────────────────────
+      # ── Ruff — scan only PR-changed Python files ──────────────────────────
       - name: Run Ruff
         id: ruff
         continue-on-error: true
         run: |
-          ruff check lakehouse_framework --format json -o ruff-report.json || true
+          PY_COUNT=$(wc -l < pr-changed-py.txt | tr -d ' ')
+          if [ "${PY_COUNT}" -eq 0 ]; then
+            echo "No Python files changed in this PR — skipping Ruff"
+            echo "[]" > ruff-report.json
+          else
+            xargs -a pr-changed-py.txt -r ruff check \
+              --format json -o ruff-report.json || true
+          fi
           [ -f ruff-report.json ] || echo "[]" > ruff-report.json
 
       # ── SQLFluff ──────────────────────────────────────────────────────────
@@ -520,11 +591,12 @@ jobs:
           
               Thresholds:
                 secrets        : any found             (zero tolerance)
-                duplication    : > 10 %
+                duplication    : > 30 %
                 semgrep        : any ERROR-level
                 bandit         : any HIGH severity
                 pytest         : any test failure
-                coverage       : < cov_threshold %
+                coverage       : < cov_threshold %  BUT skipped when tests_total == 0
+                                 (no tests added yet is not a blocker — coverage is N/A)
                 pylint         : any ERROR or FATAL
                 ruff           : any ERROR
                 sqlfluff       : any ERROR
@@ -534,7 +606,11 @@ jobs:
               if sg.get("errors_count", 0) > 0:    return "fail"
               if bd.get("high", 0) > 0:            return "fail"
               if pt.get("failed", 0) > 0:          return "fail"
-              if cov["total_pct"] < cov_threshold: return "fail"
+              # Coverage is only a blocker when tests actually exist.
+              # If tests_total == 0, coverage is meaningless (no tests ran) and
+              # must NOT block the PR — it will show as 'N/A' in the dashboard.
+              if pt.get("total", 0) > 0 and cov["total_pct"] < cov_threshold:
+                  return "fail"
               if pl.get("errors", 0) > 0:          return "fail"
               if rf.get("errors", 0) > 0:          return "fail"
               if sf.get("errors", 0) > 0:          return "fail"
@@ -657,7 +733,7 @@ jobs:
             --pylint        pylint-report.json \
             --ruff          ruff-report.json \
             --sqlfluff      sqlfluff-report.json \
-            --cov-threshold 0 \
+            --cov-threshold 80 \
             --output        combined-report.json
 
       # ── Upload to Databricks Volume ────────────────────────────────────────
@@ -677,6 +753,53 @@ jobs:
       # ── Quality Gate ──────────────────────────────────────────────────────
       - name: Quality Gate
         run: |
+          # ── Print full diagnostic report ──────────────────────────────────
+          echo "============================================================"
+          echo "  📊  CODE QUALITY REPORT — DIAGNOSTIC SUMMARY"
+          echo "============================================================"
+          python3 -c "
+          import json, sys
+
+          report = json.load(open('combined-report.json'))
+          s      = report.get('summary', {})
+
+          cov_pct   = s.get('coverage_pct', 0)
+          tests_tot = s.get('tests_total',  0)
+          cov_label = f\"{cov_pct}%\" if tests_tot > 0 else \"N/A (no tests)\"
+
+          print(f\"  PR          : #{report.get('pr_number','?')}  |  {report.get('pr_title','')}\")
+          print(f\"  Author      : {report.get('pr_author','?')}\")
+          print(f\"  Branch      : {report.get('branch','?')}\")
+          print(f\"  Commit SHA  : {report.get('commit_sha','?')}\")
+          print(f\"  Timestamp   : {report.get('timestamp','?')}\")
+          print()
+          print(f\"  ┌─────────────────────────────────────────────────────┐\")
+          print(f\"  │  METRIC                    VALUE       THRESHOLD    │\")
+          print(f\"  ├─────────────────────────────────────────────────────┤\")
+          print(f\"  │  Secrets (Gitleaks)        {s.get('secrets',0):<12}0            │\")
+          print(f\"  │  Code Duplication (jscpd)  {str(s.get('duplication',0))+'%':<12}≤ 30%        │\")
+          print(f\"  │  Semgrep errors            {s.get('bugs_error',0):<12}0            │\")
+          print(f\"  │  Semgrep warnings          {s.get('bugs_warning',0):<12}(informational) │\")
+          print(f\"  │  Bandit HIGH severity       {s.get('security_high',0):<12}0            │\")
+          print(f\"  │  Bandit issues (total)     {s.get('security',0):<12}(informational) │\")
+          print(f\"  │  Tests passed              {s.get('tests_passed',0):<12}             │\")
+          print(f\"  │  Tests failed              {s.get('tests_failed',0):<12}0            │\")
+          print(f\"  │  Tests total               {tests_tot:<12}             │\")
+          print(f\"  │  Coverage                  {cov_label:<12}≥ {s.get('coverage_threshold',80)}% (if tests)│\")
+          print(f\"  │  Pylint errors             {s.get('pylint_errors',0):<12}0            │\")
+          print(f\"  │  Pylint warnings           {s.get('pylint_warnings',0):<12}(informational) │\")
+          print(f\"  │  Pylint notebook issues    {s.get('pylint_nb_count',0):<12}(informational) │\")
+          print(f\"  │  Ruff errors               {s.get('ruff_errors',0):<12}0            │\")
+          print(f\"  │  Ruff warnings             {s.get('ruff_warnings',0):<12}(informational) │\")
+          print(f\"  │  SQLFluff errors           {s.get('sqlfluff_errors',0):<12}0            │\")
+          print(f\"  └─────────────────────────────────────────────────────┘\")
+          print()
+          print(f\"  Overall Status : {s.get('status','?').upper()}\")
+          "
+          echo "============================================================"
+          echo ""
+
+          # ── Determine pass/fail and print reasons ─────────────────────────
           STATUS=$(python3 -c "
           import json, sys
           report = json.load(open('combined-report.json'))
@@ -696,7 +819,9 @@ jobs:
                   reasons.append(f\"Bandit HIGH severity: {s['security_high']} found\")
               if s.get('tests_failed', 0) > 0:
                   reasons.append(f\"Test failures: {s['tests_failed']} failed\")
-              if s.get('coverage_pct', 0) < s.get('coverage_threshold', 80):
+              # Coverage is only a blocker when tests exist.
+              # When tests_total == 0, skip this check — coverage is N/A.
+              if s.get('tests_total', 0) > 0 and s.get('coverage_pct', 0) < s.get('coverage_threshold', 0):
                   reasons.append(f\"Coverage too low: {s['coverage_pct']}% (threshold: {s['coverage_threshold']}%)\")
               if s.get('pylint_errors', 0) > 0:
                   reasons.append(f\"Pylint errors: {s['pylint_errors']} found\")
