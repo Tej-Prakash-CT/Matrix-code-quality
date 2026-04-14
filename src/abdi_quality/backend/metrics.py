@@ -31,8 +31,31 @@ from .models import (
     TrendSeries,
     TrendsOut,
 )
+from .admin_config import AdminConfig, load_config, rule_allowed, severity_passes
 from .owasp import get_owasp_category
 from .rule_names import get_rule_name
+
+
+def _filter_findings(findings: list, cfg: AdminConfig, severity_key: str = "severity", rule_keys: tuple = ("rule_id", "test_id", "message_id")) -> list:
+    """Drop findings below min severity or whose rule id is in ignored_rules."""
+    out = []
+    for f in findings:
+        sev = f.get(severity_key, "") or ""
+        # Some tools use 'type' instead of severity (pylint)
+        if not sev:
+            sev = f.get("type", "") or ""
+        rid = next((f.get(k, "") for k in rule_keys if f.get(k)), "")
+        if sev and not severity_passes(sev, cfg):
+            continue
+        if rid and not rule_allowed(rid, cfg):
+            continue
+        out.append(f)
+    return out
+
+
+def _tool_enabled(tool: str, cfg: AdminConfig) -> bool:
+    tc = cfg.tools.get(tool)
+    return True if tc is None else tc.enabled
 
 
 # ── Per-KLOC ──
@@ -371,14 +394,18 @@ def build_scan_summary(entry: dict, report: dict) -> ScanSummaryOut:
 
 
 def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[dict]) -> ScanDetailOut:
+    cfg = load_config()
     s = report.get("summary", {})
     pl = report.get("pylint", {})
     bd = report.get("bandit", {})
 
     # Build tool findings
-    def to_findings(items: list, default_severity: str = "") -> list[ToolFinding]:
+    def to_findings(items: list, tool: str, default_severity: str = "") -> list[ToolFinding]:
+        if not _tool_enabled(tool, cfg):
+            return []
+        filtered = _filter_findings(items, cfg)
         findings = []
-        for f in items:
+        for f in filtered:
             rid = f.get("rule_id", f.get("test_id", f.get("message_id", "")))
             # For pylint, prefer the symbol field as rule_name if available
             name = f.get("symbol", "") or get_rule_name(rid)
@@ -397,12 +424,12 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
             )
         return findings
 
-    # Notebook/source split
+    # Notebook/source split (only for visible findings)
     nb_split = []
     for tool_name, tool_data in [("pylint", pl), ("bandit", bd)]:
-        findings = tool_data.get("findings", [])
-        nb = sum(1 for f in findings if f.get("source") == "notebook")
-        nb_split.append(NotebookSourceSplit(tool=tool_name, notebook_count=nb, python_count=len(findings) - nb))
+        visible = _filter_findings(tool_data.get("findings", []), cfg) if _tool_enabled(tool_name, cfg) else []
+        nb = sum(1 for f in visible if f.get("source") == "notebook")
+        nb_split.append(NotebookSourceSplit(tool=tool_name, notebook_count=nb, python_count=len(visible) - nb))
 
     # Coverage files
     cov_files = [CoverageFile(**cf) for cf in report.get("coverage", {}).get("files", [])]
@@ -435,9 +462,9 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
             py_count=pl.get("py_count", 0),
         ),
         bandit_severity=BanditSeverity(
-            high=bd.get("high", 0),
-            medium=bd.get("medium", 0),
-            low=bd.get("low", 0),
+            high=bd.get("high", 0) if severity_passes("high", cfg) else 0,
+            medium=bd.get("medium", 0) if severity_passes("medium", cfg) else 0,
+            low=bd.get("low", 0) if severity_passes("low", cfg) else 0,
             notebook_count=bd.get("notebook_count", 0),
         ),
         coverage_files=cov_files,
@@ -451,12 +478,12 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
             failures=report.get("pytest", {}).get("failures", []),
         ),
         notebook_source_split=nb_split,
-        gitleaks_findings=to_findings(report.get("gitleaks", {}).get("findings", [])),
-        semgrep_findings=to_findings(report.get("semgrep", {}).get("findings", [])),
-        bandit_findings=to_findings(report.get("bandit", {}).get("findings", [])),
-        pylint_findings=to_findings(pl.get("findings", [])),
-        ruff_findings=to_findings(report.get("ruff", {}).get("findings", [])),
-        sqlfluff_findings=to_findings(report.get("sqlfluff", {}).get("findings", [])),
+        gitleaks_findings=to_findings(report.get("gitleaks", {}).get("findings", []), "gitleaks"),
+        semgrep_findings=to_findings(report.get("semgrep", {}).get("findings", []), "semgrep"),
+        bandit_findings=to_findings(report.get("bandit", {}).get("findings", []), "bandit"),
+        pylint_findings=to_findings(pl.get("findings", []), "pylint"),
+        ruff_findings=to_findings(report.get("ruff", {}).get("findings", []), "ruff"),
+        sqlfluff_findings=to_findings(report.get("sqlfluff", {}).get("findings", []), "sqlfluff"),
         jscpd_duplicates=jscpd_dups,
         ai_review=report.get("ai_review"),
         duplication_pct=report.get("jscpd", {}).get("percentage", 0),
@@ -474,7 +501,8 @@ def build_trends(reports: list[dict], limit: int = 50) -> TrendsOut:
         "coverage": ("Coverage %", lambda d: d.get("coverage", {}).get("total_pct", 0)),
         "bugs": ("Bugs", lambda d: float(d.get("semgrep", {}).get("count", 0))),
         "duplication": ("Duplication %", lambda d: d.get("jscpd", {}).get("percentage", 0)),
-        "security": ("Security Issues", lambda d: float(d.get("bandit", {}).get("count", 0))),
+        # High-severity only — low/medium excluded as noise per admin config default.
+        "security": ("High-Severity Security Issues", lambda d: float(d.get("bandit", {}).get("high", 0))),
         "secrets": ("Secrets", lambda d: float(d.get("gitleaks", {}).get("count", 0))),
         "tests": ("Tests", lambda d: float(d.get("pytest", {}).get("total", 0))),
         "hotspots": (
@@ -565,47 +593,67 @@ def build_team_health(reports: list[dict]) -> TeamHealthOut:
 
 
 def build_security_overview(reports: list[dict]) -> SecurityOverviewOut:
+    cfg = load_config()
     all_data = [e["data"] for e in reports]
 
-    # Aggregate bandit severity
-    total_high = sum(d.get("bandit", {}).get("high", 0) for d in all_data)
-    total_med = sum(d.get("bandit", {}).get("medium", 0) for d in all_data)
-    total_low = sum(d.get("bandit", {}).get("low", 0) for d in all_data)
-    total_nb = sum(d.get("bandit", {}).get("notebook_count", 0) for d in all_data)
-    total_secrets = sum(d.get("gitleaks", {}).get("count", 0) for d in all_data)
-    total_vulns = sum(d.get("bandit", {}).get("count", 0) for d in all_data)
+    def _sev_total(tool_key: str, sev: str) -> int:
+        if not _tool_enabled(tool_key, cfg) or not severity_passes(sev, cfg):
+            return 0
+        return sum(d.get(tool_key, {}).get(sev, 0) for d in all_data)
+
+    # Aggregate bandit severity (respecting admin filters)
+    total_high = _sev_total("bandit", "high")
+    total_med = _sev_total("bandit", "medium")
+    total_low = _sev_total("bandit", "low")
+    total_nb = sum(d.get("bandit", {}).get("notebook_count", 0) for d in all_data) if _tool_enabled("bandit", cfg) else 0
+
+    # Count only visible (after filter) gitleaks & bandit findings
+    def _count_visible(tool_key: str) -> int:
+        if not _tool_enabled(tool_key, cfg):
+            return 0
+        total = 0
+        for d in all_data:
+            total += len(_filter_findings(d.get(tool_key, {}).get("findings", []), cfg))
+        return total
+
+    total_secrets = _count_visible("gitleaks")
+    total_vulns = _count_visible("bandit")
 
     # OWASP mapping
     owasp_findings: dict[str, list[ToolFinding]] = {}
     rule_counter: Counter = Counter()
 
     for data in all_data:
-        for f in data.get("bandit", {}).get("findings", []):
-            test_id = f.get("test_id", "")
-            cat_id, cat_name = get_owasp_category(test_id)
-            key = f"{cat_id}|{cat_name}"
-            if key not in owasp_findings:
-                owasp_findings[key] = []
-            owasp_findings[key].append(
-                ToolFinding(
-                    rule_id=test_id,
-                    rule_name=get_rule_name(test_id),
-                    file=f.get("file", ""),
-                    line=f.get("line", 0),
-                    message=f.get("message", ""),
-                    severity=f.get("severity", ""),
-                    source=f.get("source", "python"),
+        if _tool_enabled("bandit", cfg):
+            for f in _filter_findings(data.get("bandit", {}).get("findings", []), cfg):
+                test_id = f.get("test_id", "")
+                cat_id, cat_name = get_owasp_category(test_id)
+                key = f"{cat_id}|{cat_name}"
+                if key not in owasp_findings:
+                    owasp_findings[key] = []
+                owasp_findings[key].append(
+                    ToolFinding(
+                        rule_id=test_id,
+                        rule_name=get_rule_name(test_id),
+                        file=f.get("file", ""),
+                        line=f.get("line", 0),
+                        message=f.get("message", ""),
+                        severity=f.get("severity", ""),
+                        source=f.get("source", "python"),
+                    )
                 )
-            )
-            rule_counter[(test_id, "bandit", f.get("severity", ""))] += 1
+                rule_counter[(test_id, "bandit", f.get("severity", ""))] += 1
 
-        # Also count semgrep and other tools for recurring violations
-        for f in data.get("semgrep", {}).get("findings", []):
-            rule_counter[(f.get("rule_id", ""), "semgrep", f.get("severity", ""))] += 1
-        for f in data.get("ruff", {}).get("findings", []):
-            rule_counter[(f.get("rule_id", ""), "ruff", f.get("severity", ""))] += 1
-        for f in data.get("pylint", {}).get("findings", []):
-            rule_counter[(f.get("message_id", ""), "pylint", f.get("type", ""))] += 1
+        # Also count semgrep and other tools for recurring violations (honor filters)
+        if _tool_enabled("semgrep", cfg):
+            for f in _filter_findings(data.get("semgrep", {}).get("findings", []), cfg):
+                rule_counter[(f.get("rule_id", ""), "semgrep", f.get("severity", ""))] += 1
+        if _tool_enabled("ruff", cfg):
+            for f in _filter_findings(data.get("ruff", {}).get("findings", []), cfg):
+                rule_counter[(f.get("rule_id", ""), "ruff", f.get("severity", ""))] += 1
+        if _tool_enabled("pylint", cfg):
+            for f in _filter_findings(data.get("pylint", {}).get("findings", []), cfg):
+                rule_counter[(f.get("message_id", ""), "pylint", f.get("type", ""))] += 1
 
     owasp_cats = []
     for key, findings in sorted(owasp_findings.items(), key=lambda x: len(x[1]), reverse=True):

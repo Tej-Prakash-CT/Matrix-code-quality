@@ -143,9 +143,12 @@ export default function TeamPage() {
         {/* Pass/Fail by Author */}
         <div className="bg-card rounded-lg p-4 shadow-sm">
           <h2 className="text-lg font-semibold mb-4">Pass / Fail by Author</h2>
-          <div className="h-72">
+          <div className="h-96">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={authorBarData}>
+              <BarChart
+                data={authorBarData}
+                margin={{ top: 5, right: 10, left: 0, bottom: 30 }}
+              >
                 <CartesianGrid
                   strokeDasharray="3 3"
                   stroke="var(--color-border)"
@@ -154,6 +157,10 @@ export default function TeamPage() {
                   dataKey="author"
                   tick={{ fontSize: 10 }}
                   stroke="var(--color-muted-foreground)"
+                  interval={0}
+                  angle={-35}
+                  textAnchor="end"
+                  height={80}
                 />
                 <YAxis
                   tick={{ fontSize: 10 }}

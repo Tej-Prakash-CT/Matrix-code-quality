@@ -1,0 +1,77 @@
+{
+  "tools": {
+    "gitleaks": {
+      "enabled": true,
+      "display_name": "Gitleaks",
+      "description": "Secret Detection (credentials, API keys)"
+    },
+    "jscpd": {
+      "enabled": true,
+      "display_name": "jscpd",
+      "description": "Code Duplication Analysis"
+    },
+    "semgrep": {
+      "enabled": true,
+      "display_name": "Semgrep",
+      "description": "Bug & Pattern Detection"
+    },
+    "bandit": {
+      "enabled": true,
+      "display_name": "Bandit",
+      "description": "Python Security Analysis"
+    },
+    "pylint": {
+      "enabled": false,
+      "display_name": "Pylint",
+      "description": "Python Code Quality & Linting"
+    },
+    "ruff": {
+      "enabled": false,
+      "display_name": "Ruff",
+      "description": "Fast Python Linting"
+    },
+    "sqlfluff": {
+      "enabled": false,
+      "display_name": "SQLFluff",
+      "description": "SQL Standards & Style"
+    },
+    "pytest": {
+      "enabled": false,
+      "display_name": "Pytest",
+      "description": "Unit Test Execution"
+    },
+    "coverage": {
+      "enabled": false,
+      "display_name": "Coverage.py",
+      "description": "Test Coverage Measurement"
+    }
+  },
+  "thresholds": {
+    "coverage_target_pct": 80.0,
+    "duplication_warning_pct": 10.0,
+    "duplication_fail_pct": 20.0,
+    "bugs_per_kloc_warning": 1.0,
+    "bugs_per_kloc_danger": 5.0,
+    "vulns_per_kloc_warning": 1.0,
+    "vulns_per_kloc_danger": 3.0,
+    "hotspots_warning": 5,
+    "hotspots_danger": 10,
+    "tech_debt_ratio_warning_pct": 10.0,
+    "tech_debt_ratio_danger_pct": 50.0
+  },
+  "grade_weights": {
+    "reliability": 0.25,
+    "security": 0.25,
+    "maintainability": 0.2,
+    "coverage": 0.15,
+    "duplication": 0.1,
+    "tests": 0.05
+  },
+  "severity_filter": {
+    "min_severity": "high",
+    "fail_on": [
+      "high"
+    ]
+  },
+  "ignored_rules": []
+}

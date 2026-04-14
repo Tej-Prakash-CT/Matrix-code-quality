@@ -8,12 +8,16 @@ import PrDetailPage from "./pages/pr-detail";
 import TrendsPage from "./pages/trends";
 import TeamPage from "./pages/team";
 import SecurityPage from "./pages/security";
+import AdminLoginPage from "./pages/admin/login";
+import AdminDashboardPage from "./pages/admin/dashboard";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
       <Routes>
+        {/* Admin login lives outside the main layout so the sidebar is hidden. */}
+        <Route path="admin/login" element={<AdminLoginPage />} />
         <Route element={<SidebarLayout />}>
           <Route index element={<WelcomePage />} />
           <Route path="overview" element={<OverviewPage />} />
@@ -21,6 +25,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="trends" element={<TrendsPage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="security" element={<SecurityPage />} />
+          <Route path="admin" element={<AdminDashboardPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

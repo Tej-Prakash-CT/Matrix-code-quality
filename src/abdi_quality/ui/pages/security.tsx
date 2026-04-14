@@ -40,7 +40,8 @@ export default function SecurityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedOwasp, setExpandedOwasp] = useState<string | null>(null);
-  const [findingsFilter, setFindingsFilter] = useState<string>("all");
+  // Low/medium are filtered out server-side per admin config; default to high.
+  const [findingsFilter, setFindingsFilter] = useState<string>("high");
 
   useEffect(() => {
     api
@@ -437,7 +438,6 @@ export default function SecurityPage() {
                 onChange={(e) => setFindingsFilter(e.target.value)}
                 className="text-sm bg-card border border-border rounded-md px-2 py-1"
               >
-                <option value="all">All ({allFindings.length})</option>
                 <option value="high">
                   High (
                   {
@@ -447,25 +447,13 @@ export default function SecurityPage() {
                   }
                   )
                 </option>
-                <option value="medium">
-                  Medium (
-                  {
-                    allFindings.filter(
-                      (f) => f.severity.toLowerCase() === "medium"
-                    ).length
-                  }
-                  )
-                </option>
-                <option value="low">
-                  Low (
-                  {
-                    allFindings.filter(
-                      (f) => f.severity.toLowerCase() === "low"
-                    ).length
-                  }
-                  )
-                </option>
               </select>
+              <span
+                className="text-xs text-muted-foreground"
+                title="Low and medium severity findings are filtered out via the Admin severity policy."
+              >
+                (low/medium hidden)
+              </span>
             </div>
           </div>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">

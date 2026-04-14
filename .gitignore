@@ -77,3 +77,6 @@ src/dist/
 # Adding here as an extra safety net
 .databricks/bundle/
 .databricks
+
+# ── Virtual environment ───────────────────────────────────────────────────
+venv/

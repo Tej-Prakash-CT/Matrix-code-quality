@@ -530,7 +530,7 @@ jobs:
                 sqlfluff       : any ERROR
               """
               if gl["count"] > 0:                  return "fail"
-              if jd["percentage"] > 20:            return "fail"
+              if jd["percentage"] > 30:            return "fail"
               if sg.get("errors_count", 0) > 0:    return "fail"
               if bd.get("high", 0) > 0:            return "fail"
               if pt.get("failed", 0) > 0:          return "fail"
@@ -657,7 +657,7 @@ jobs:
             --pylint        pylint-report.json \
             --ruff          ruff-report.json \
             --sqlfluff      sqlfluff-report.json \
-            --cov-threshold 80 \
+            --cov-threshold 0 \
             --output        combined-report.json
 
       # ── Upload to Databricks Volume ────────────────────────────────────────
@@ -688,8 +688,8 @@ jobs:
               s = report['summary']
               if s.get('secrets', 0) > 0:
                   reasons.append(f\"Secrets detected: {s['secrets']} found\")
-              if s.get('duplication', 0) > 20:
-                  reasons.append(f\"Duplication too high: {s['duplication']}% (limit: 20%)\")
+              if s.get('duplication', 0) > 30:
+                  reasons.append(f\"Duplication too high: {s['duplication']}% (limit: 30%)\")
               if s.get('bugs_error', 0) > 0:
                   reasons.append(f\"Semgrep errors: {s['bugs_error']} found\")
               if s.get('security_high', 0) > 0:

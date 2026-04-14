@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { api, type ScanDetailOut, type ToolFinding } from "@/lib/api";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { api, type ScanDetailOut, type ScanSummaryOut, type ToolFinding } from "@/lib/api";
 import {
   formatDate,
   getGradeColor,
@@ -174,9 +174,11 @@ function FindingsTable({ findings }: { findings: ToolFinding[] }) {
 
 export default function PrDetailPage() {
   const { prNumber } = useParams<{ prNumber: string }>();
+  const navigate = useNavigate();
   const [data, setData] = useState<ScanDetailOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [prList, setPrList] = useState<ScanSummaryOut[]>([]);
 
   useEffect(() => {
     if (!prNumber) return;
@@ -187,6 +189,24 @@ export default function PrDetailPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [prNumber]);
+
+  // Load the list of PRs once for the switcher.
+  useEffect(() => {
+    api
+      .listScans()
+      .then((scans) => {
+        // Dedupe by pr_number, keeping the latest (the list is sorted desc).
+        const seen = new Set<string>();
+        const unique: ScanSummaryOut[] = [];
+        for (const s of scans) {
+          if (seen.has(s.pr_number)) continue;
+          seen.add(s.pr_number);
+          unique.push(s);
+        }
+        setPrList(unique);
+      })
+      .catch(() => setPrList([]));
+  }, []);
 
   if (loading) return <PrDetailSkeleton />;
   if (error)
@@ -250,14 +270,42 @@ export default function PrDetailPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Back link + Header */}
+      {/* Back link + PR switcher + Header */}
       <div>
-        <Link
-          to="/"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
-        >
-          <ArrowLeft size={14} /> Back to overview
-        </Link>
+        <div className="flex items-center justify-between gap-4 mb-3">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft size={14} /> Back to overview
+          </Link>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              Currently viewing:
+            </span>
+            <span className="inline-flex items-center rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-semibold">
+              PR #{data.pr_number}
+            </span>
+            <label className="text-xs text-muted-foreground ml-2">
+              Switch PR:
+            </label>
+            <select
+              value={data.pr_number}
+              onChange={(e) => navigate(`/pr/${e.target.value}`)}
+              className="text-sm bg-card border border-border rounded-md px-2 py-1 max-w-[320px]"
+            >
+              {prList.length === 0 && (
+                <option value={data.pr_number}>#{data.pr_number}</option>
+              )}
+              {prList.map((s) => (
+                <option key={s.pr_number} value={s.pr_number}>
+                  #{s.pr_number} — {s.author} — {s.status.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
         <div className="flex items-center gap-4">
           <div
             className={`w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-xl ${getGradeColor(data.quality_grade)}`}

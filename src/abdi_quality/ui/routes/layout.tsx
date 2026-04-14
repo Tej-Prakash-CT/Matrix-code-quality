@@ -1,4 +1,4 @@
-import { Outlet, NavLink } from "react-router-dom";
+import { Outlet, NavLink, useLocation } from "react-router-dom";
 import {
   Home,
   LayoutDashboard,
@@ -7,8 +7,10 @@ import {
   Shield,
   Moon,
   Sun,
+  Settings,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { hasAdminToken } from "@/lib/api";
 
 const navItems = [
   { to: "/", label: "Home", icon: Home, end: true },
@@ -19,16 +21,23 @@ const navItems = [
 ];
 
 export function SidebarLayout() {
+  const location = useLocation();
   const [dark, setDark] = useState(() => {
     if (typeof window !== "undefined") {
       return window.matchMedia("(prefers-color-scheme: dark)").matches;
     }
     return false;
   });
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => hasAdminToken());
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
+
+  // Re-read token on route changes so the Admin link appears right after login.
+  useEffect(() => {
+    setIsAdmin(hasAdminToken());
+  }, [location.pathname]);
 
   return (
     <div className="flex min-h-screen">
@@ -59,6 +68,21 @@ export function SidebarLayout() {
               {label}
             </NavLink>
           ))}
+          {isAdmin && (
+            <NavLink
+              to="/admin"
+              className={({ isActive }) =>
+                `flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                }`
+              }
+            >
+              <Settings size={16} />
+              Admin
+            </NavLink>
+          )}
         </nav>
 
         <button

@@ -1,8 +1,44 @@
 const API_BASE = "/api";
 
-async function fetchApi<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+async function fetchApi<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, init);
+  if (!res.ok) {
+    const msg = await res.text().catch(() => "");
+    throw new Error(msg || `API error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export const ADMIN_TOKEN_KEY = "matrix_admin_token";
+
+function adminHeaders(): HeadersInit {
+  const token =
+    typeof window !== "undefined"
+      ? window.localStorage.getItem(ADMIN_TOKEN_KEY)
+      : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function adminFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...adminHeaders(),
+      ...(init.headers || {}),
+    },
+  });
+  if (res.status === 401) {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+    }
+    throw new Error("Not authenticated");
+  }
+  if (!res.ok) {
+    const msg = await res.text().catch(() => "");
+    throw new Error(msg || `API error: ${res.status}`);
+  }
+  if (res.status === 204) return undefined as unknown as T;
   return res.json();
 }
 
@@ -225,13 +261,96 @@ export interface OverviewOut {
   top_recurring_violations: RecurringViolation[];
 }
 
+// ── Admin types ─────────────────────────────────────────────────────────────
+
+export interface ToolConfig {
+  enabled: boolean;
+  display_name: string;
+  description: string;
+}
+
+export interface ThresholdConfig {
+  coverage_target_pct: number;
+  duplication_warning_pct: number;
+  duplication_fail_pct: number;
+  bugs_per_kloc_warning: number;
+  bugs_per_kloc_danger: number;
+  vulns_per_kloc_warning: number;
+  vulns_per_kloc_danger: number;
+  hotspots_warning: number;
+  hotspots_danger: number;
+  tech_debt_ratio_warning_pct: number;
+  tech_debt_ratio_danger_pct: number;
+}
+
+export interface GradeWeights {
+  reliability: number;
+  security: number;
+  maintainability: number;
+  coverage: number;
+  duplication: number;
+  tests: number;
+}
+
+export interface SeverityFilter {
+  min_severity: "high" | "medium" | "low";
+  fail_on: string[];
+}
+
+export interface AdminConfig {
+  tools: Record<string, ToolConfig>;
+  thresholds: ThresholdConfig;
+  grade_weights: GradeWeights;
+  severity_filter: SeverityFilter;
+  ignored_rules: string[];
+}
+
 // API fetch functions
 export const api = {
   getOverview: () => fetchApi<OverviewOut>("/overview"),
-  listScans: () => fetchApi<ScanSummaryOut[]>("/scans"),
+  listScans: () => fetchApi<ScanSummaryOut[]>("/scans?limit=200"),
   getScan: (prNumber: string) => fetchApi<ScanDetailOut>(`/scans/${prNumber}`),
   getTrends: (limit = 50) => fetchApi<TrendsOut>(`/trends?limit=${limit}`),
   getTeamHealth: () => fetchApi<TeamHealthOut>("/team"),
   getSecurityOverview: () => fetchApi<SecurityOverviewOut>("/security"),
   getFixRate: (prNumber: string) => fetchApi<FixRateOut>(`/scans/${prNumber}/fix-rate`),
 };
+
+export const adminApi = {
+  login: (username: string, password: string) =>
+    fetchApi<{ token: string }>("/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () =>
+    adminFetch<{ ok: boolean }>("/admin/logout", { method: "POST" }),
+  getConfig: () => adminFetch<AdminConfig>("/admin/config"),
+  saveConfig: (cfg: AdminConfig) =>
+    adminFetch<AdminConfig>("/admin/config", {
+      method: "PUT",
+      body: JSON.stringify(cfg),
+    }),
+  changePassword: (username: string, new_password: string) =>
+    adminFetch<{ ok: boolean }>("/admin/password", {
+      method: "POST",
+      body: JSON.stringify({ username, new_password }),
+    }),
+};
+
+export function hasAdminToken(): boolean {
+  if (typeof window === "undefined") return false;
+  return Boolean(window.localStorage.getItem(ADMIN_TOKEN_KEY));
+}
+
+export function setAdminToken(token: string): void {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  }
+}
+
+export function clearAdminToken(): void {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+  }
+}
