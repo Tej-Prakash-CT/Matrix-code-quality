@@ -12,11 +12,13 @@ async function fetchApi<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const ADMIN_TOKEN_KEY = "matrix_admin_token";
 
 function adminHeaders(): HeadersInit {
+  // Use a custom header (not Authorization) because the Databricks Apps
+  // reverse proxy strips/overwrites Authorization for its own OAuth flow.
   const token =
     typeof window !== "undefined"
       ? window.localStorage.getItem(ADMIN_TOKEN_KEY)
       : null;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return token ? { "X-Admin-Token": token } : {};
 }
 
 async function adminFetch<T>(path: string, init: RequestInit = {}): Promise<T> {

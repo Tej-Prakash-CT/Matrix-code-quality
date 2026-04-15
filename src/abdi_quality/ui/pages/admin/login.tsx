@@ -85,11 +85,6 @@ export default function AdminLoginPage() {
         >
           {submitting ? "Signing in\u2026" : "Sign in"}
         </button>
-
-        <p className="text-[10px] text-muted-foreground text-center">
-          First-time default: <code>admin / matrix-admin-2024</code> — change it
-          immediately from the Security tab.
-        </p>
       </form>
     </div>
   );

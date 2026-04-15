@@ -151,11 +151,17 @@ class ChangePasswordIn(BaseModel):
     new_password: str
 
 
-def require_admin(authorization: str = Header(default="")) -> None:
-    """Dependency: validates 'Authorization: Bearer <token>' against active sessions."""
-    if not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Missing bearer token")
-    token = authorization.split(" ", 1)[1].strip()
+def require_admin(
+    x_admin_token: str = Header(default="", alias="X-Admin-Token"),
+) -> None:
+    """Dependency: validates 'X-Admin-Token: <token>' against active sessions.
+
+    We deliberately do NOT use the standard Authorization header because the
+    Databricks Apps reverse proxy strips/overwrites it for its own OAuth flow.
+    """
+    token = x_admin_token.strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing admin token")
     if not validate_token(token):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
@@ -168,9 +174,12 @@ async def admin_login(body: LoginIn) -> LoginOut:
 
 
 @api.post("/admin/logout", operation_id="adminLogout")
-async def admin_logout(authorization: str = Header(default="")) -> dict:
-    if authorization.lower().startswith("bearer "):
-        revoke_token(authorization.split(" ", 1)[1].strip())
+async def admin_logout(
+    x_admin_token: str = Header(default="", alias="X-Admin-Token"),
+) -> dict:
+    token = x_admin_token.strip()
+    if token:
+        revoke_token(token)
     return {"ok": True}
 
 
