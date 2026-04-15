@@ -114,6 +114,13 @@ export default function TrendsPage() {
       );
   }, [data]);
 
+  // Returns true when all data points in a series have the same value (flat / tool disabled)
+  function isFlat(series: TrendSeries): boolean {
+    if (series.data.length === 0) return true;
+    const first = series.data[0].value;
+    return series.data.every((p) => p.value === first);
+  }
+
   if (loading) return <TrendsSkeleton />;
   if (error)
     return (
@@ -210,11 +217,12 @@ export default function TrendsPage() {
               {selectedSeries.map((series) => (
                 <Line
                   key={series.metric}
-                  type="monotone"
+                  type={isFlat(series) ? "linear" : "monotone"}
                   dataKey={series.metric}
                   name={series.label}
                   stroke={getColorForMetric(series.metric)}
-                  strokeWidth={2}
+                  strokeWidth={isFlat(series) ? 1.5 : 2}
+                  strokeDasharray={isFlat(series) ? "4 4" : undefined}
                   dot={{ r: 3 }}
                   activeDot={{ r: 5 }}
                   connectNulls
@@ -291,7 +299,9 @@ export default function TrendsPage() {
           );
           const latest = sorted[sorted.length - 1];
           const prev = sorted.length > 1 ? sorted[sorted.length - 2] : null;
-          const delta = prev ? latest.value - prev.value : null;
+          const flat = isFlat(series);
+          const allZero = flat && latest?.value === 0;
+          const delta = (!flat && prev) ? latest.value - prev.value : null;
 
           return (
             <div key={series.metric} className="bg-card rounded-lg p-4 shadow-sm">
@@ -299,7 +309,7 @@ export default function TrendsPage() {
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   {series.label}
                 </span>
-                {delta !== null && (
+                {delta !== null ? (
                   <span
                     className={`text-xs ${
                       delta > 0 ? "text-red-500" : delta < 0 ? "text-green-500" : "text-muted-foreground"
@@ -308,19 +318,22 @@ export default function TrendsPage() {
                     {delta > 0 ? "+" : ""}
                     {delta.toFixed(1)}
                   </span>
-                )}
+                ) : allZero ? (
+                  <span className="text-xs text-muted-foreground italic">disabled</span>
+                ) : null}
               </div>
-              <div className="text-xl font-bold mb-2">
-                {latest ? latest.value.toFixed(1) : "\u2014"}
+              <div className={`text-xl font-bold mb-2 ${allZero ? "text-muted-foreground" : ""}`}>
+                {allZero ? "N/A" : latest ? latest.value.toFixed(1) : "\u2014"}
               </div>
               <div className="h-12">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={sorted}>
                     <Line
-                      type="monotone"
+                      type={flat ? "linear" : "monotone"}
                       dataKey="value"
-                      stroke={getColorForMetric(series.metric)}
+                      stroke={allZero ? "var(--color-border)" : getColorForMetric(series.metric)}
                       strokeWidth={1.5}
+                      strokeDasharray={allZero ? "4 4" : undefined}
                       dot={false}
                     />
                   </LineChart>

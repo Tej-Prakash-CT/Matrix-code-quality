@@ -60,8 +60,10 @@ async def list_scans(
     limit: int = Query(default=50, le=200),
 ) -> list[ScanSummaryOut]:
     """List all scans in summary view with optional filters."""
+    from .admin_config import load_config as _load_cfg
     reports = get_all_reports()
-    summaries = [build_scan_summary(e, e["data"]) for e in reports]
+    cfg = _load_cfg()
+    summaries = [build_scan_summary(e, e["data"], cfg) for e in reports]
 
     if author:
         summaries = [s for s in summaries if s.author == author]

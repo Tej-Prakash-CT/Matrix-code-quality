@@ -21,38 +21,38 @@
       "description": "Python Security Analysis"
     },
     "pylint": {
-      "enabled": false,
+      "enabled": true,
       "display_name": "Pylint",
       "description": "Python Code Quality & Linting"
     },
     "ruff": {
-      "enabled": false,
+      "enabled": true,
       "display_name": "Ruff",
       "description": "Fast Python Linting"
     },
     "sqlfluff": {
-      "enabled": false,
+      "enabled": true,
       "display_name": "SQLFluff",
       "description": "SQL Standards & Style"
     },
     "pytest": {
-      "enabled": false,
+      "enabled": true,
       "display_name": "Pytest",
       "description": "Unit Test Execution"
     },
     "coverage": {
-      "enabled": false,
+      "enabled": true,
       "display_name": "Coverage.py",
       "description": "Test Coverage Measurement"
     }
   },
   "thresholds": {
     "coverage_target_pct": 80.0,
-    "duplication_warning_pct": 10.0,
-    "duplication_fail_pct": 20.0,
-    "bugs_per_kloc_warning": 1.0,
+    "duplication_warning_pct": 30.0,
+    "duplication_fail_pct": 10.0,
+    "bugs_per_kloc_warning": 0.0,
     "bugs_per_kloc_danger": 5.0,
-    "vulns_per_kloc_warning": 1.0,
+    "vulns_per_kloc_warning": 0.0,
     "vulns_per_kloc_danger": 3.0,
     "hotspots_warning": 5,
     "hotspots_danger": 10,

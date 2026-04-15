@@ -80,3 +80,7 @@ src/dist/
 
 # ── Virtual environment ───────────────────────────────────────────────────
 venv/
+venv_new/
+prototype
+prototypes
+.gitignore

@@ -91,12 +91,15 @@ function CollapsibleSection({
   title,
   icon: Icon,
   count,
+  countLabel,
   defaultOpen = false,
   children,
 }: {
   title: string;
   icon: React.ComponentType<{ size?: number }>;
   count: number;
+  /** Override the default "{n} items" label — e.g. to emphasize blocking errors. */
+  countLabel?: React.ReactNode;
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
@@ -110,8 +113,12 @@ function CollapsibleSection({
         {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         <Icon size={16} />
         <span className="font-semibold">{title}</span>
-        <span className="ml-auto text-sm text-muted-foreground">
-          {count} {count === 1 ? "item" : "items"}
+        <span className="ml-auto text-sm">
+          {countLabel ?? (
+            <span className="text-muted-foreground">
+              {count} {count === 1 ? "item" : "items"}
+            </span>
+          )}
         </span>
       </button>
       {open && <div className="border-t border-border p-4">{children}</div>}
@@ -119,55 +126,153 @@ function CollapsibleSection({
   );
 }
 
-function FindingsTable({ findings }: { findings: ToolFinding[] }) {
+// Canonical severity rank — matches backend admin_config._SEVERITY_RANK so the
+// UI can sort and filter consistently across tools with different vocabularies
+// (bandit: low/medium/high; pylint: convention/refactor/warning/error).
+const SEVERITY_RANK: Record<string, number> = {
+  error: 3, fatal: 3, critical: 3, high: 3,
+  warning: 2, medium: 2,
+  convention: 1, refactor: 1, info: 1, low: 1,
+};
+
+function severityRank(s: string): number {
+  return SEVERITY_RANK[(s || "").toLowerCase()] ?? 0;
+}
+
+function FindingsTable({
+  findings,
+  defaultFilter,
+}: {
+  findings: ToolFinding[];
+  /** Preselect a severity filter (e.g. "error" for pylint so the 6 blocking
+   *  errors are visible immediately without scrolling the full list). */
+  defaultFilter?: string;
+}) {
+  // Build counts and the set of distinct severities present.
+  const { counts, severities } = (() => {
+    const c: Record<string, number> = {};
+    for (const f of findings) {
+      const s = (f.severity || "unknown").toLowerCase();
+      c[s] = (c[s] || 0) + 1;
+    }
+    const sevs = Object.keys(c).sort(
+      (a, b) => severityRank(b) - severityRank(a)
+    );
+    return { counts: c, severities: sevs };
+  })();
+
+  // If the requested default filter has no findings, fall back to "all" so the
+  // section doesn't look empty.
+  const safeDefault =
+    defaultFilter && counts[defaultFilter.toLowerCase()]
+      ? defaultFilter.toLowerCase()
+      : "all";
+  const [filter, setFilter] = useState<string>(safeDefault);
+
+  const filtered = (() => {
+    const list =
+      filter === "all"
+        ? findings
+        : findings.filter(
+            (f) => (f.severity || "").toLowerCase() === filter
+          );
+    // Always highest severity first, then file, then line — stable + useful.
+    return [...list].sort((a, b) => {
+      const r = severityRank(b.severity) - severityRank(a.severity);
+      if (r !== 0) return r;
+      const fc = (a.file || "").localeCompare(b.file || "");
+      if (fc !== 0) return fc;
+      return (a.line || 0) - (b.line || 0);
+    });
+  })();
+
   if (findings.length === 0)
     return (
       <p className="text-sm text-muted-foreground">No findings in this category.</p>
     );
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-muted-foreground">
-            <th className="pb-2 font-medium">Rule</th>
-            <th className="pb-2 font-medium">Severity</th>
-            <th className="pb-2 font-medium">File</th>
-            <th className="pb-2 font-medium text-right">Line</th>
-            <th className="pb-2 font-medium">Message</th>
-          </tr>
-        </thead>
-        <tbody>
-          {findings.map((f, i) => (
-            <tr
-              key={`${f.rule_id}-${f.file}-${f.line}-${i}`}
-              className="border-b border-border/50"
+    <div className="space-y-3">
+      {/* Severity filter pills — lets the reviewer isolate the blocking
+          findings (e.g. 6 pylint errors) from the long tail of warnings. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          onClick={() => setFilter("all")}
+          className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+            filter === "all"
+              ? "bg-primary text-primary-foreground"
+              : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+          }`}
+        >
+          All <span className="opacity-70">({findings.length})</span>
+        </button>
+        {severities.map((s) => {
+          const active = filter === s;
+          return (
+            <button
+              key={s}
+              onClick={() => setFilter(s)}
+              className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
+                active
+                  ? getSeverityColor(s) + " ring-2 ring-offset-1 ring-current/40"
+                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              }`}
             >
-              <td className="py-1.5 text-xs">
-                <span className="font-medium">{f.rule_name || f.rule_id}</span>
-                {f.rule_name && f.rule_name !== f.rule_id && (
-                  <span className="ml-1 text-muted-foreground font-mono">({f.rule_id})</span>
-                )}
-              </td>
-              <td className="py-1.5">
-                <span
-                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getSeverityColor(f.severity)}`}
-                >
-                  {f.severity}
-                </span>
-              </td>
-              <td className="py-1.5 font-mono text-xs max-w-[200px] truncate">
-                {f.file}
-              </td>
-              <td className="py-1.5 text-right font-mono text-xs">
-                {f.line}
-              </td>
-              <td className="py-1.5 text-xs max-w-[300px] truncate">
-                {f.message}
-              </td>
+              {s} <span className="opacity-70 ml-1">({counts[s]})</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-muted-foreground">
+              <th className="pb-2 font-medium">Rule</th>
+              <th className="pb-2 font-medium">Severity</th>
+              <th className="pb-2 font-medium">File</th>
+              <th className="pb-2 font-medium text-right">Line</th>
+              <th className="pb-2 font-medium">Message</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {filtered.map((f, i) => (
+              <tr
+                key={`${f.rule_id}-${f.file}-${f.line}-${i}`}
+                className="border-b border-border/50"
+              >
+                <td className="py-1.5 text-xs">
+                  <span className="font-medium">{f.rule_name || f.rule_id}</span>
+                  {f.rule_name && f.rule_name !== f.rule_id && (
+                    <span className="ml-1 text-muted-foreground font-mono">({f.rule_id})</span>
+                  )}
+                </td>
+                <td className="py-1.5">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getSeverityColor(f.severity)}`}
+                  >
+                    {f.severity || "unknown"}
+                  </span>
+                </td>
+                <td className="py-1.5 font-mono text-xs max-w-[200px] truncate">
+                  {f.file}
+                </td>
+                <td className="py-1.5 text-right font-mono text-xs">
+                  {f.line}
+                </td>
+                <td className="py-1.5 text-xs max-w-[300px] truncate">
+                  {f.message}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {filtered.length === 0 && (
+          <p className="text-xs text-muted-foreground mt-2">
+            No findings match the "{filter}" filter.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -699,8 +804,33 @@ export default function PrDetailPage() {
           title="Pylint Findings"
           icon={Code}
           count={data.pylint_findings.length}
+          defaultOpen={data.pylint_breakdown.errors > 0}
+          countLabel={
+            data.pylint_breakdown.errors > 0 ? (
+              <>
+                <span className="font-semibold text-red-600 dark:text-red-400">
+                  {data.pylint_breakdown.errors} error
+                  {data.pylint_breakdown.errors === 1 ? "" : "s"}
+                </span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  / {data.pylint_findings.length} total
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-foreground">
+                {data.pylint_findings.length}{" "}
+                {data.pylint_findings.length === 1 ? "item" : "items"}
+              </span>
+            )
+          }
         >
-          <FindingsTable findings={data.pylint_findings} />
+          <FindingsTable
+            findings={data.pylint_findings}
+            defaultFilter={
+              data.pylint_breakdown.errors > 0 ? "error" : undefined
+            }
+          />
         </CollapsibleSection>
 
         <CollapsibleSection

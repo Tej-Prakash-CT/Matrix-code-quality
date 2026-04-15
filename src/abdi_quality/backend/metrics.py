@@ -61,7 +61,12 @@ def _tool_enabled(tool: str, cfg: AdminConfig) -> bool:
 # ── Per-KLOC ──
 
 
-def bugs_per_kloc(report: dict) -> float | None:
+def bugs_per_kloc(report: dict, cfg: AdminConfig | None = None) -> float | None:
+    if cfg is not None and not _tool_enabled("semgrep", cfg):
+        return None
+    # Use jscpd total_lines only if jscpd tool is enabled (or no cfg provided)
+    if cfg is not None and not _tool_enabled("jscpd", cfg):
+        return None
     total_lines = report.get("jscpd", {}).get("total_lines", 0)
     if total_lines == 0:
         return None
@@ -69,7 +74,11 @@ def bugs_per_kloc(report: dict) -> float | None:
     return round((bugs / total_lines) * 1000, 2)
 
 
-def vulns_per_kloc(report: dict) -> float | None:
+def vulns_per_kloc(report: dict, cfg: AdminConfig | None = None) -> float | None:
+    if cfg is not None and not _tool_enabled("bandit", cfg):
+        return None
+    if cfg is not None and not _tool_enabled("jscpd", cfg):
+        return None
     total_lines = report.get("jscpd", {}).get("total_lines", 0)
     if total_lines == 0:
         return None
@@ -188,16 +197,19 @@ def _test_score(report: dict) -> float:
     return 20
 
 
-def compute_quality_grade(report: dict) -> QualityGrade:
+def compute_quality_grade(report: dict, cfg: AdminConfig | None = None) -> QualityGrade:
+    if cfg is None:
+        cfg = load_config()
     cov = report.get("coverage", {}).get("total_pct", 0)
+    gw = cfg.grade_weights
 
     weighted = (
-        _reliability_score(report) * 0.25
-        + _security_score(report) * 0.25
-        + _maintainability_score(report) * 0.20
-        + min(cov, 100) * 0.15
-        + _duplication_score(report) * 0.10
-        + _test_score(report) * 0.05
+        _reliability_score(report) * gw.reliability
+        + _security_score(report) * gw.security
+        + _maintainability_score(report) * gw.maintainability
+        + min(cov, 100) * gw.coverage
+        + _duplication_score(report) * gw.duplication
+        + _test_score(report) * gw.tests
     )
 
     if weighted >= 85:
@@ -209,6 +221,69 @@ def compute_quality_grade(report: dict) -> QualityGrade:
     if weighted >= 40:
         return QualityGrade.D
     return QualityGrade.E
+
+
+def _evaluate_scan_status(report: dict, cfg: AdminConfig) -> ScanStatus:
+    """
+    Re-evaluate pass/fail using current admin thresholds.
+    Respects: tool toggles, thresholds, severity fail_on list, tech debt thresholds.
+    """
+    thr = cfg.thresholds
+    sf = cfg.severity_filter
+    s = report.get("summary", {})
+
+    # ── jscpd: duplication ──────────────────────────────────────────────────
+    if _tool_enabled("jscpd", cfg):
+        dup = report.get("jscpd", {}).get("percentage", 0)
+        if dup > thr.duplication_fail_pct:
+            return ScanStatus.FAIL
+
+    # ── coverage/pytest ─────────────────────────────────────────────────────
+    if _tool_enabled("coverage", cfg) and _tool_enabled("pytest", cfg):
+        cov = report.get("coverage", {}).get("total_pct", 0)
+        tests = report.get("pytest", {}).get("total", 0)
+        if tests > 0 and cov < thr.coverage_target_pct:
+            return ScanStatus.FAIL
+
+    # ── semgrep: bugs/kloc ──────────────────────────────────────────────────
+    if _tool_enabled("semgrep", cfg):
+        bkloc = bugs_per_kloc(report, cfg)
+        if bkloc is not None and bkloc > thr.bugs_per_kloc_danger:
+            return ScanStatus.FAIL
+
+    # ── bandit: vulns/kloc + severity fail_on ───────────────────────────────
+    if _tool_enabled("bandit", cfg):
+        vkloc = vulns_per_kloc(report, cfg)
+        if vkloc is not None and vkloc > thr.vulns_per_kloc_danger:
+            return ScanStatus.FAIL
+        # Severity-based fail: check if any bandit finding severity is in fail_on
+        bd = report.get("bandit", {})
+        for sev in sf.fail_on:
+            if severity_passes(sev, cfg) and bd.get(sev.lower(), 0) > 0:
+                return ScanStatus.FAIL
+
+    # ── gitleaks: secrets + severity fail_on ────────────────────────────────
+    if _tool_enabled("gitleaks", cfg):
+        if "high" in sf.fail_on and report.get("gitleaks", {}).get("count", 0) > 0:
+            return ScanStatus.FAIL
+
+    # ── pylint / ruff / sqlfluff: hotspots ──────────────────────────────────
+    hotspot_count = 0
+    if _tool_enabled("pylint", cfg):
+        hotspot_count += s.get("pylint_errors", 0)
+    if _tool_enabled("ruff", cfg):
+        hotspot_count += s.get("ruff_errors", 0)
+    if _tool_enabled("sqlfluff", cfg):
+        hotspot_count += s.get("sqlfluff_errors", 0)
+    if hotspot_count > thr.hotspots_danger:
+        return ScanStatus.FAIL
+
+    # ── tech debt ────────────────────────────────────────────────────────────
+    td = compute_technical_debt(report)
+    if td.ratio_pct > thr.tech_debt_ratio_danger_pct:
+        return ScanStatus.FAIL
+
+    return ScanStatus.PASS
 
 
 # ── Delta Indicators ──
@@ -247,115 +322,167 @@ def _kpi_status(good: bool, danger: bool) -> str:
     return "good"
 
 
-def build_kpi_cards(report: dict, prev_report: dict | None, all_reports: list[dict]) -> list[KpiCard]:
-    """Build 8 KPI cards for overview/detail."""
-    s = report.get("summary", {})
-    cov = report.get("coverage", {}).get("total_pct", 0)
-    dup = report.get("jscpd", {}).get("percentage", 0)
-    bugs = report.get("semgrep", {}).get("count", 0)
-    vulns = report.get("bandit", {}).get("count", 0)
-    secrets = report.get("gitleaks", {}).get("count", 0)
-    tests = report.get("pytest", {}).get("total", 0)
-    hotspots = s.get("pylint_errors", 0) + s.get("ruff_errors", 0) + s.get("sqlfluff_errors", 0)
-    bkloc = bugs_per_kloc(report)
-    vkloc = vulns_per_kloc(report)
+def build_kpi_cards(report: dict, prev_report: dict | None, all_reports: list[dict], cfg: AdminConfig | None = None) -> list[KpiCard]:
+    """Build 8 KPI cards for overview/detail using admin config thresholds and tool toggles."""
+    if cfg is None:
+        cfg = load_config()
+    thr = cfg.thresholds
 
+    s = report.get("summary", {})
     prev = prev_report or {}
     prev_s = prev.get("summary", {})
+
+    # ── Coverage (respect tool toggles) ─────────────────────────────────────
+    cov_enabled = _tool_enabled("coverage", cfg) and _tool_enabled("pytest", cfg)
+    cov = report.get("coverage", {}).get("total_pct", 0) if cov_enabled else 0
+    tests = report.get("pytest", {}).get("total", 0) if _tool_enabled("pytest", cfg) else 0
+    cov_good = cov >= thr.coverage_target_pct
+    cov_danger = cov < 50
+
+    # ── Duplication (jscpd) ──────────────────────────────────────────────────
+    dup_enabled = _tool_enabled("jscpd", cfg)
+    dup = report.get("jscpd", {}).get("percentage", 0) if dup_enabled else 0
+    dup_good = dup <= thr.duplication_warning_pct
+    dup_danger = dup > thr.duplication_fail_pct
+
+    # ── Bugs/KLOC (semgrep) ──────────────────────────────────────────────────
+    bkloc = bugs_per_kloc(report, cfg)
+    bkloc_good = (bkloc or 0) < thr.bugs_per_kloc_warning
+    bkloc_danger = (bkloc or 0) > thr.bugs_per_kloc_danger
+
+    # ── Vulns/KLOC (bandit) ──────────────────────────────────────────────────
+    vkloc = vulns_per_kloc(report, cfg)
+    vkloc_good = (vkloc or 0) < thr.vulns_per_kloc_warning
+    vkloc_danger = (vkloc or 0) > thr.vulns_per_kloc_danger
+
+    # ── Hotspots (pylint + ruff + sqlfluff, respect toggles) ─────────────────
+    hotspots = 0
+    if _tool_enabled("pylint", cfg):
+        hotspots += s.get("pylint_errors", 0)
+    if _tool_enabled("ruff", cfg):
+        hotspots += s.get("ruff_errors", 0)
+    if _tool_enabled("sqlfluff", cfg):
+        hotspots += s.get("sqlfluff_errors", 0)
+    hs_good = hotspots <= thr.hotspots_warning
+    hs_danger = hotspots > thr.hotspots_danger
+
+    # ── Secrets (gitleaks) ───────────────────────────────────────────────────
+    secrets = report.get("gitleaks", {}).get("count", 0) if _tool_enabled("gitleaks", cfg) else 0
+    prev_secrets = float(prev.get("gitleaks", {}).get("count", 0)) if _tool_enabled("gitleaks", cfg) else 0.0
+
+    # ── Tech Debt (use admin thresholds) ─────────────────────────────────────
+    td = compute_technical_debt(report)
+    td_good = td.ratio_pct <= thr.tech_debt_ratio_warning_pct
+    td_danger = td.ratio_pct > thr.tech_debt_ratio_danger_pct
+
+    # Prev hotspots (respect toggles)
+    prev_hotspots = 0.0
+    if _tool_enabled("pylint", cfg):
+        prev_hotspots += prev_s.get("pylint_errors", 0)
+    if _tool_enabled("ruff", cfg):
+        prev_hotspots += prev_s.get("ruff_errors", 0)
+    if _tool_enabled("sqlfluff", cfg):
+        prev_hotspots += prev_s.get("sqlfluff_errors", 0)
+
+    # Helper: returns empty sparkline when tool disabled, real data when enabled
+    def _spark(enabled: bool, fn) -> list:
+        return build_sparkline(all_reports, fn) if enabled else []
+
+    # Hotspot sparkline only counts enabled linters
+    def _hotspot_fn(d: dict) -> float:
+        total = 0.0
+        if _tool_enabled("pylint", cfg):
+            total += d.get("summary", {}).get("pylint_errors", 0)
+        if _tool_enabled("ruff", cfg):
+            total += d.get("summary", {}).get("ruff_errors", 0)
+        if _tool_enabled("sqlfluff", cfg):
+            total += d.get("summary", {}).get("sqlfluff_errors", 0)
+        return total
 
     cards = [
         KpiCard(
             label="Coverage",
-            value=f"{cov}%" if tests > 0 else "N/A",
+            value=f"{cov}%" if (cov_enabled and tests > 0) else "N/A",
             raw_value=cov,
-            status=_kpi_status(cov >= 80, cov < 50) if tests > 0 else "good",
-            tooltip="Percentage of codebase verified by automated tests.",
-            delta=compute_delta(cov, prev.get("coverage", {}).get("total_pct")) if prev else None,
-            sparkline=build_sparkline(all_reports, lambda d: d.get("coverage", {}).get("total_pct", 0)),
+            status=_kpi_status(cov_good, cov_danger) if (cov_enabled and tests > 0) else "good",
+            tooltip=f"Percentage of codebase verified by automated tests. Target: {thr.coverage_target_pct}%"
+                    + (" [tool disabled]" if not cov_enabled else ""),
+            delta=compute_delta(cov, prev.get("coverage", {}).get("total_pct")) if (prev and cov_enabled) else None,
+            sparkline=_spark(cov_enabled, lambda d: d.get("coverage", {}).get("total_pct", 0)),
         ),
         KpiCard(
             label="Duplication",
-            value=f"{dup}%",
+            value=f"{dup}%" if dup_enabled else "N/A",
             raw_value=dup,
-            status=_kpi_status(dup <= 5, dup > 10),
-            tooltip="Percentage of identical code blocks repeated across the project.",
-            delta=compute_delta(dup, prev.get("jscpd", {}).get("percentage")) if prev else None,
-            sparkline=build_sparkline(all_reports, lambda d: d.get("jscpd", {}).get("percentage", 0)),
+            status=_kpi_status(dup_good, dup_danger) if dup_enabled else "good",
+            tooltip=f"Code duplication. Warn: {thr.duplication_warning_pct}%, Fail: {thr.duplication_fail_pct}%"
+                    + (" [tool disabled]" if not dup_enabled else ""),
+            delta=compute_delta(dup, prev.get("jscpd", {}).get("percentage")) if (prev and dup_enabled) else None,
+            sparkline=_spark(dup_enabled, lambda d: d.get("jscpd", {}).get("percentage", 0)),
         ),
         KpiCard(
             label="Bugs / KLOC",
             value=f"{bkloc:.1f}" if bkloc is not None else "N/A",
             raw_value=bkloc or 0,
-            status=_kpi_status((bkloc or 0) < 1, (bkloc or 0) > 5),
-            tooltip="Bug density: semgrep findings per 1,000 lines of code.",
-            delta=compute_delta(bkloc or 0, bugs_per_kloc(prev)) if prev and bkloc is not None else None,
-            sparkline=build_sparkline(all_reports, lambda d: bugs_per_kloc(d) or 0),
+            status=_kpi_status(bkloc_good, bkloc_danger) if bkloc is not None else "good",
+            tooltip=f"Bug density (semgrep). Warn: {thr.bugs_per_kloc_warning}, Fail: {thr.bugs_per_kloc_danger}"
+                    + (" [tool disabled]" if not _tool_enabled("semgrep", cfg) else ""),
+            delta=compute_delta(bkloc or 0, bugs_per_kloc(prev, cfg)) if (prev and bkloc is not None) else None,
+            sparkline=_spark(_tool_enabled("semgrep", cfg), lambda d: bugs_per_kloc(d) or 0),
         ),
         KpiCard(
             label="Vulns / KLOC",
             value=f"{vkloc:.1f}" if vkloc is not None else "N/A",
             raw_value=vkloc or 0,
-            status=_kpi_status((vkloc or 0) < 1, (vkloc or 0) > 3),
-            tooltip="Vulnerability density: bandit findings per 1,000 lines of code.",
-            delta=compute_delta(vkloc or 0, vulns_per_kloc(prev)) if prev and vkloc is not None else None,
-            sparkline=build_sparkline(all_reports, lambda d: vulns_per_kloc(d) or 0),
+            status=_kpi_status(vkloc_good, vkloc_danger) if vkloc is not None else "good",
+            tooltip=f"Vuln density (bandit). Warn: {thr.vulns_per_kloc_warning}, Fail: {thr.vulns_per_kloc_danger}"
+                    + (" [tool disabled]" if not _tool_enabled("bandit", cfg) else ""),
+            delta=compute_delta(vkloc or 0, vulns_per_kloc(prev, cfg)) if (prev and vkloc is not None) else None,
+            sparkline=_spark(_tool_enabled("bandit", cfg), lambda d: vulns_per_kloc(d) or 0),
         ),
         KpiCard(
             label="Hotspots",
-            value=f"{hotspots}",
+            value=str(hotspots),
             raw_value=float(hotspots),
-            status=_kpi_status(hotspots == 0, hotspots > 10),
-            tooltip="Sum of pylint errors, ruff errors, and sqlfluff errors.",
-            delta=compute_delta(
-                float(hotspots),
-                float(prev_s.get("pylint_errors", 0) + prev_s.get("ruff_errors", 0) + prev_s.get("sqlfluff_errors", 0))
-                if prev_s
-                else None,
-            )
-            if prev
-            else None,
-            sparkline=build_sparkline(
-                all_reports,
-                lambda d: float(
-                    d.get("summary", {}).get("pylint_errors", 0)
-                    + d.get("summary", {}).get("ruff_errors", 0)
-                    + d.get("summary", {}).get("sqlfluff_errors", 0)
-                ),
-            ),
+            status=_kpi_status(hs_good, hs_danger),
+            tooltip=f"Errors from enabled linters (pylint/ruff/sqlfluff). Warn: {thr.hotspots_warning}, Fail: {thr.hotspots_danger}",
+            delta=compute_delta(float(hotspots), prev_hotspots) if prev else None,
+            # Always show hotspot sparkline, but only counting enabled tools
+            sparkline=build_sparkline(all_reports, _hotspot_fn),
         ),
         KpiCard(
             label="Secrets",
-            value=f"{secrets}",
+            value=str(secrets) if _tool_enabled("gitleaks", cfg) else "N/A",
             raw_value=float(secrets),
-            status=_kpi_status(secrets == 0, secrets > 0),
-            tooltip="Hardcoded passwords, API keys, or credentials in code.",
-            delta=compute_delta(float(secrets), float(prev.get("gitleaks", {}).get("count", 0))) if prev else None,
-            sparkline=build_sparkline(all_reports, lambda d: float(d.get("gitleaks", {}).get("count", 0))),
+            status=_kpi_status(secrets == 0, secrets > 0) if _tool_enabled("gitleaks", cfg) else "good",
+            tooltip="Hardcoded passwords, API keys, or credentials in code."
+                    + (" [tool disabled]" if not _tool_enabled("gitleaks", cfg) else ""),
+            delta=compute_delta(float(secrets), prev_secrets) if prev else None,
+            sparkline=_spark(_tool_enabled("gitleaks", cfg), lambda d: float(d.get("gitleaks", {}).get("count", 0))),
         ),
         KpiCard(
             label="Tests",
-            value=f"{tests}" if tests > 0 else "N/A",
+            value=str(tests) if _tool_enabled("pytest", cfg) else "N/A",
             raw_value=float(tests),
             status="good",
-            tooltip="Total number of automated unit tests run.",
+            tooltip="Total number of automated unit tests run."
+                    + (" [tool disabled]" if not _tool_enabled("pytest", cfg) else ""),
             delta=compute_delta(float(tests), float(prev.get("pytest", {}).get("total", 0))) if prev else None,
-            sparkline=build_sparkline(all_reports, lambda d: float(d.get("pytest", {}).get("total", 0))),
+            sparkline=_spark(_tool_enabled("pytest", cfg), lambda d: float(d.get("pytest", {}).get("total", 0))),
         ),
         KpiCard(
             label="Tech Debt",
-            value=compute_technical_debt(report).grade.value,
-            raw_value=compute_technical_debt(report).ratio_pct,
-            status=_kpi_status(
-                compute_technical_debt(report).grade in (QualityGrade.A, QualityGrade.B),
-                compute_technical_debt(report).grade in (QualityGrade.D, QualityGrade.E),
-            ),
-            tooltip="Technical debt ratio: estimated remediation cost vs development cost.",
+            value=td.grade.value,
+            raw_value=td.ratio_pct,
+            status=_kpi_status(td_good, td_danger),
+            tooltip=f"Tech debt ratio. Warn: {thr.tech_debt_ratio_warning_pct}%, Fail: {thr.tech_debt_ratio_danger_pct}%",
             delta=compute_delta(
-                compute_technical_debt(report).ratio_pct,
+                td.ratio_pct,
                 compute_technical_debt(prev).ratio_pct if prev else None,
             )
             if prev
             else None,
+            # Tech Debt is derived (pylint + ruff + semgrep + bandit), always show
             sparkline=build_sparkline(all_reports, lambda d: compute_technical_debt(d).ratio_pct),
         ),
     ]
@@ -365,10 +492,15 @@ def build_kpi_cards(report: dict, prev_report: dict | None, all_reports: list[di
 # ── Summary builder ──
 
 
-def build_scan_summary(entry: dict, report: dict) -> ScanSummaryOut:
+def build_scan_summary(entry: dict, report: dict, cfg: AdminConfig | None = None) -> ScanSummaryOut:
+    if cfg is None:
+        cfg = load_config()
     s = report.get("summary", {})
     pylint_findings = report.get("pylint", {}).get("findings", [])
     pylint_errors = sum(1 for f in pylint_findings if f.get("type", "").lower() in ("error", "fatal"))
+
+    # Re-evaluate status against current admin thresholds instead of using stale CI value
+    live_status = _evaluate_scan_status(report, cfg)
 
     return ScanSummaryOut(
         pr_number=str(report.get("pr_number", "")),
@@ -376,7 +508,7 @@ def build_scan_summary(entry: dict, report: dict) -> ScanSummaryOut:
         branch=report.get("branch", "unknown"),
         author=report.get("pr_author", "unknown"),
         timestamp=report.get("timestamp", ""),
-        status=ScanStatus(s.get("status", "fail")),
+        status=live_status,
         coverage_pct=report.get("coverage", {}).get("total_pct", 0),
         bugs=report.get("semgrep", {}).get("count", 0),
         security=report.get("bandit", {}).get("count", 0),
@@ -384,7 +516,7 @@ def build_scan_summary(entry: dict, report: dict) -> ScanSummaryOut:
         hotspots=pylint_errors + s.get("ruff_errors", 0) + s.get("sqlfluff_errors", 0),
         duplication=report.get("jscpd", {}).get("percentage", 0),
         tests_total=report.get("pytest", {}).get("total", 0),
-        quality_grade=compute_quality_grade(report),
+        quality_grade=compute_quality_grade(report, cfg),
         bugs_per_kloc=bugs_per_kloc(report),
         vulns_per_kloc=vulns_per_kloc(report),
     )
@@ -394,7 +526,7 @@ def build_scan_summary(entry: dict, report: dict) -> ScanSummaryOut:
 
 
 def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[dict]) -> ScanDetailOut:
-    cfg = load_config()
+    cfg = load_config()  # single load, passed through to all helpers
     s = report.get("summary", {})
     pl = report.get("pylint", {})
     bd = report.get("bandit", {})
@@ -411,6 +543,11 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
             name = f.get("symbol", "") or get_rule_name(rid)
             if name == rid and f.get("symbol"):
                 name = f["symbol"].replace("-", " ").replace("_", " ").title()
+            # Pylint findings don't have a `severity` field — they carry `type`
+            # ("error" / "warning" / "convention" / "refactor"). Fall back to
+            # that so the UI always receives a non-empty severity it can
+            # colour-code and filter by.
+            sev = f.get("severity") or f.get("type") or default_severity
             findings.append(
                 ToolFinding(
                     rule_id=rid,
@@ -418,7 +555,7 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
                     file=f.get("file", f.get("path", "")),
                     line=f.get("line", f.get("line_start", 0)),
                     message=f.get("message", f.get("description", "")),
-                    severity=f.get("severity", default_severity),
+                    severity=sev,
                     source=f.get("source", "python"),
                 )
             )
@@ -446,13 +583,13 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
         commit_sha=str(report.get("commit_sha", "")),
         repo=report.get("repo", ""),
         timestamp=report.get("timestamp", ""),
-        status=ScanStatus(s.get("status", "fail")),
-        quality_grade=compute_quality_grade(report),
+        status=_evaluate_scan_status(report, cfg),
+        quality_grade=compute_quality_grade(report, cfg),
         technical_debt=compute_technical_debt(report),
         bugs_per_kloc=bugs_per_kloc(report),
         vulns_per_kloc=vulns_per_kloc(report),
         loc=report.get("jscpd", {}).get("total_lines", 0),
-        kpi_cards=build_kpi_cards(report, prev_report, all_reports),
+        kpi_cards=build_kpi_cards(report, prev_report, all_reports, cfg),
         pylint_breakdown=PylintBreakdown(
             errors=pl.get("errors", 0),
             warnings=pl.get("warnings", 0),
@@ -496,24 +633,51 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
 
 def build_trends(reports: list[dict], limit: int = 50) -> TrendsOut:
     entries = reports[:limit]
+    cfg = load_config()
+
+    # Tool-aware extractors: disabled tools always return 0.0 (flat line)
+    def _cov(d: dict) -> float:
+        if not (_tool_enabled("coverage", cfg) and _tool_enabled("pytest", cfg)):
+            return 0.0
+        return float(d.get("coverage", {}).get("total_pct", 0))
+
+    def _bugs(d: dict) -> float:
+        return float(d.get("semgrep", {}).get("count", 0)) if _tool_enabled("semgrep", cfg) else 0.0
+
+    def _dup(d: dict) -> float:
+        return float(d.get("jscpd", {}).get("percentage", 0)) if _tool_enabled("jscpd", cfg) else 0.0
+
+    def _security(d: dict) -> float:
+        if not _tool_enabled("bandit", cfg):
+            return 0.0
+        # Respect min severity — only show if high severity passes filter
+        return float(d.get("bandit", {}).get("high", 0)) if severity_passes("high", cfg) else 0.0
+
+    def _secrets(d: dict) -> float:
+        return float(d.get("gitleaks", {}).get("count", 0)) if _tool_enabled("gitleaks", cfg) else 0.0
+
+    def _tests(d: dict) -> float:
+        return float(d.get("pytest", {}).get("total", 0)) if _tool_enabled("pytest", cfg) else 0.0
+
+    def _hotspots(d: dict) -> float:
+        total = 0.0
+        if _tool_enabled("pylint", cfg):
+            total += d.get("summary", {}).get("pylint_errors", 0)
+        if _tool_enabled("ruff", cfg):
+            total += d.get("summary", {}).get("ruff_errors", 0)
+        if _tool_enabled("sqlfluff", cfg):
+            total += d.get("summary", {}).get("sqlfluff_errors", 0)
+        return total
 
     metric_extractors = {
-        "coverage": ("Coverage %", lambda d: d.get("coverage", {}).get("total_pct", 0)),
-        "bugs": ("Bugs", lambda d: float(d.get("semgrep", {}).get("count", 0))),
-        "duplication": ("Duplication %", lambda d: d.get("jscpd", {}).get("percentage", 0)),
-        # High-severity only — low/medium excluded as noise per admin config default.
-        "security": ("High-Severity Security Issues", lambda d: float(d.get("bandit", {}).get("high", 0))),
-        "secrets": ("Secrets", lambda d: float(d.get("gitleaks", {}).get("count", 0))),
-        "tests": ("Tests", lambda d: float(d.get("pytest", {}).get("total", 0))),
-        "hotspots": (
-            "Hotspots",
-            lambda d: float(
-                d.get("summary", {}).get("pylint_errors", 0)
-                + d.get("summary", {}).get("ruff_errors", 0)
-                + d.get("summary", {}).get("sqlfluff_errors", 0)
-            ),
-        ),
-        "tech_debt": ("Tech Debt %", lambda d: compute_technical_debt(d).ratio_pct),
+        "coverage":   ("Coverage %",                  _cov),
+        "bugs":       ("Bugs",                        _bugs),
+        "duplication":("Duplication %",               _dup),
+        "security":   ("High-Severity Security Issues", _security),
+        "secrets":    ("Secrets",                     _secrets),
+        "tests":      ("Tests",                       _tests),
+        "hotspots":   ("Hotspots",                    _hotspots),
+        "tech_debt":  ("Tech Debt %",                 lambda d: compute_technical_debt(d).ratio_pct),
     }
 
     series = []
@@ -548,9 +712,11 @@ def build_team_health(reports: list[dict]) -> TeamHealthOut:
             recent_scans=[],
         )
 
+    cfg = load_config()  # single load for consistent threshold evaluation
     all_data = [e["data"] for e in reports]
     total = len(all_data)
-    failing = sum(1 for d in all_data if d.get("summary", {}).get("status") != "pass")
+    # Re-evaluate pass/fail using current admin thresholds
+    failing = sum(1 for d in all_data if _evaluate_scan_status(d, cfg) != ScanStatus.PASS)
     pass_rate = round(((total - failing) / total) * 100, 1) if total else 0
     avg_cov = round(sum(d.get("coverage", {}).get("total_pct", 0) for d in all_data) / total, 1) if total else 0
     authors = set(d.get("pr_author", "unknown") for d in all_data)
@@ -559,7 +725,7 @@ def build_team_health(reports: list[dict]) -> TeamHealthOut:
     for author in authors:
         auth_data = [d for d in all_data if d.get("pr_author") == author]
         auth_total = len(auth_data)
-        passes = sum(1 for d in auth_data if d.get("summary", {}).get("status") == "pass")
+        passes = sum(1 for d in auth_data if _evaluate_scan_status(d, cfg) == ScanStatus.PASS)
         contributors.append(
             ContributorOut(
                 author=author,
@@ -576,7 +742,7 @@ def build_team_health(reports: list[dict]) -> TeamHealthOut:
         )
     contributors.sort(key=lambda c: c.total_prs, reverse=True)
 
-    recent = [build_scan_summary(e, e["data"]) for e in reports[:10]]
+    recent = [build_scan_summary(e, e["data"], cfg) for e in reports[:10]]
 
     return TeamHealthOut(
         total_scans=total,
@@ -729,12 +895,13 @@ def build_overview(reports: list[dict]) -> OverviewOut:
             top_recurring_violations=[],
         )
 
+    cfg = load_config()  # single load for consistency across all cards + summaries
     latest = reports[0]["data"]
     prev = reports[1]["data"] if len(reports) > 1 else None
-    grade = compute_quality_grade(latest)
-    cards = build_kpi_cards(latest, prev, reports)
+    grade = compute_quality_grade(latest, cfg)
+    cards = build_kpi_cards(latest, prev, reports, cfg)
 
-    recent = [build_scan_summary(e, e["data"]) for e in reports[:10]]
+    recent = [build_scan_summary(e, e["data"], cfg) for e in reports[:10]]
 
     # Top recurring violations across all reports
     sec = build_security_overview(reports)

@@ -56,7 +56,19 @@ class AdminConfig(BaseModel):
     ignored_rules: list[str] = []
 
 
-_SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3}
+# Canonical severity rank. Accepts native vocabularies from every tool so
+# the filter stays correct regardless of whether a finding uses
+#   bandit/generic:   low / medium / high
+#   pylint:           convention / refactor / warning / error / fatal
+#   ruff / semgrep:   info / warning / error
+_SEVERITY_RANK = {
+    # low-tier
+    "low": 1, "convention": 1, "refactor": 1, "info": 1,
+    # medium-tier
+    "medium": 2, "warning": 2,
+    # high-tier
+    "high": 3, "error": 3, "fatal": 3, "critical": 3,
+}
 
 
 def severity_passes(severity: str, cfg: AdminConfig) -> bool:
