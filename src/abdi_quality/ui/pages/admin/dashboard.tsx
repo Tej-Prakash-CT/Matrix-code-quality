@@ -420,7 +420,7 @@ function WeightsPane({
   );
 }
 
-const SEVERITIES: SeverityFilter["min_severity"][] = ["high", "medium", "low"];
+const SEVERITIES = ["high", "medium", "low"];
 
 function SeverityPane({
   draft,
@@ -430,8 +430,12 @@ function SeverityPane({
   setDraft: (c: AdminConfig) => void;
 }) {
   const s = draft.severity_filter;
-  const setMin = (v: SeverityFilter["min_severity"]) =>
-    setDraft({ ...draft, severity_filter: { ...s, min_severity: v } });
+  const toggleVisible = (sev: string) => {
+    const next = s.min_severity.includes(sev)
+      ? s.min_severity.filter((x) => x !== sev)
+      : [...s.min_severity, sev];
+    setDraft({ ...draft, severity_filter: { ...s, min_severity: next } });
+  };
   const toggleFail = (sev: string) => {
     const next = s.fail_on.includes(sev)
       ? s.fail_on.filter((x) => x !== sev)
@@ -441,14 +445,14 @@ function SeverityPane({
   return (
     <div className="bg-card rounded-lg p-4 shadow-sm space-y-4">
       <div>
-        <p className="text-sm font-medium mb-2">Minimum severity to display</p>
+        <p className="text-sm font-medium mb-2">Severity levels to display</p>
         <div className="flex gap-2">
           {SEVERITIES.map((sev) => (
             <button
               key={sev}
-              onClick={() => setMin(sev)}
-              className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                s.min_severity === sev
+              onClick={() => toggleVisible(sev)}
+              className={`text-xs px-3 py-1 rounded-full border transition-colors capitalize ${
+                s.min_severity.includes(sev)
                   ? "border-transparent bg-primary text-primary-foreground"
                   : "border-border text-muted-foreground hover:bg-accent"
               }`}
@@ -458,9 +462,14 @@ function SeverityPane({
           ))}
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          Findings below this severity are hidden from every dashboard and
-          counter.
+          Select one or more severity levels. Only findings matching selected
+          levels are shown on dashboards and counted in KPIs.
         </p>
+        {s.min_severity.length === 0 && (
+          <p className="text-xs text-yellow-500 mt-1">
+            No severities selected — all findings will be hidden.
+          </p>
+        )}
       </div>
       <div>
         <p className="text-sm font-medium mb-2">PR fails on severities</p>
@@ -468,7 +477,7 @@ function SeverityPane({
           {SEVERITIES.map((sev) => (
             <label
               key={sev}
-              className="inline-flex items-center gap-2 text-sm"
+              className="inline-flex items-center gap-2 text-sm capitalize"
             >
               <input
                 type="checkbox"

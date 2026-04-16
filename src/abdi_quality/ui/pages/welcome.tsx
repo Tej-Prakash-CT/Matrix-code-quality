@@ -254,31 +254,31 @@ export default function WelcomePage() {
           {[
             {
               label: "Quality Grade",
-              desc: "A-E composite score: Reliability (25%), Security (25%), Maintainability (20%), Coverage (15%), Duplication (10%), Tests (5%)",
+              desc: "A-E composite score: Reliability (25%), Security (25%), Maintainability (20%), Coverage (15%), Duplication (10%), Tests (5%).",
             },
             {
               label: "Bugs / KLOC",
-              desc: "Semgrep findings per 1,000 lines of code. Normalizes bug count against codebase size. < 1.0 is excellent.",
+              desc: "Severity-filtered Semgrep findings per 1,000 lines of code. Only findings at or above the admin min severity are counted. \u2264 0.0 is good, > 5.0 is critical (admin-configurable).",
             },
             {
               label: "Tech Debt Ratio",
-              desc: "Estimated remediation cost vs development cost. Grade A (< 5%) to E (> 50%). Based on weighted tool findings.",
+              desc: "Estimated remediation cost vs development cost. \u2264 10% is good, > 50% is critical. Based on weighted tool findings (admin-configurable).",
             },
             {
               label: "Vulns / KLOC",
-              desc: "Bandit security findings per 1,000 lines. Zero is ideal, > 1.0 needs attention, > 3.0 is critical.",
+              desc: "Severity-filtered Bandit security findings per 1,000 lines. Only findings at or above the admin min severity are counted. \u2264 0.0 is good, > 3.0 is critical (admin-configurable).",
             },
             {
-              label: "Coverage",
-              desc: "Percentage of code executed by Pytest automated tests. Target: >= 80%. Below 50% is danger zone.",
+              label: "Code Coverage",
+              desc: "Percentage of pipeline code exercised by framework validation tests (Pytest). These tests verify data transformations, pipeline logic, and quality rules \u2014 not business logic. Target: \u2265 80%. Below 50% is danger zone.",
             },
             {
               label: "Duplication",
-              desc: "Percentage of identical code blocks (jscpd). < 3% is clean, > 10% needs refactoring.",
+              desc: "Percentage of identical code blocks (jscpd). \u2264 20% is good, > 20% needs refactoring (admin-configurable).",
             },
             {
               label: "Hotspots",
-              desc: "Sum of Pylint errors + Ruff errors + SQLFluff errors. Zero means clean linting across all tools.",
+              desc: "Sum of Pylint errors + Ruff errors + SQLFluff errors. \u2264 5 is good, > 10 is critical (admin-configurable).",
             },
             {
               label: "OWASP Mapping",

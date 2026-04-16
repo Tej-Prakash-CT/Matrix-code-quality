@@ -200,6 +200,8 @@ export interface ScanDetailOut {
   ai_review: Record<string, unknown> | null;
   duplication_pct: number;
   total_issues: number;
+  hidden_pylint_count: number;
+  hidden_bandit_count: number;
 }
 
 export interface TrendPoint {
@@ -295,7 +297,7 @@ export interface GradeWeights {
 }
 
 export interface SeverityFilter {
-  min_severity: "high" | "medium" | "low";
+  min_severity: string[];
   fail_on: string[];
 }
 

@@ -177,6 +177,10 @@ class ScanDetailOut(BaseModel):
     ai_review: dict | None = None
     duplication_pct: float = 0.0
     total_issues: int = 0
+    # Number of findings hidden by the admin severity filter, per tool.
+    # Lets the UI show "N findings hidden below min severity" banners.
+    hidden_pylint_count: int = 0
+    hidden_bandit_count: int = 0
 
 
 # --- Trend models ---

@@ -210,6 +210,40 @@ jobs:
           " || echo '{"results":[]}' > bandit-report.json
 
       # ── Pylint — scan only PR-changed Python files ────────────────────────
+      # - name: Run pylint
+      #   id: pylint
+      #   continue-on-error: true
+      #   run: |
+      #     PY_COUNT=$(wc -l < pr-changed-py.txt | tr -d ' ')
+      #     if [ "${PY_COUNT}" -eq 0 ]; then
+      #       echo "No Python files changed in this PR — skipping pylint"
+      #       echo "[]" > pylint-py-report.json
+      #     else
+      #       # Scan only the files changed in this PR.
+      #       # xargs -a reads the file list from a file (correct syntax).
+      #       # xargs -r skips execution if the file list is empty.
+      #       xargs -a pr-changed-py.txt -r pylint \
+      #         --output-format=json \
+      #         --disable=E0401 \
+      #         > pylint-py-report.json || true
+      #     fi
+      #     python3 -c "import json; json.load(open('pylint-py-report.json'))" 2>/dev/null \
+      #       || echo "[]" > pylint-py-report.json
+      #     if [ -d .notebook_converted ] && [ "$(ls -A .notebook_converted)" ]; then
+      #       pylint .notebook_converted/ --output-format=json --recursive=yes \
+      #         --disable=C,R,E0001,E0401 \
+      #         > pylint-nb-report.json || true
+      #       # E0001: pylint parser false positives on Japanese/Unicode chars in comments
+      #       # E0401: import errors expected — pyspark/project utilities not in CI env
+      #     else
+      #       echo "[]" > pylint-nb-report.json
+      #     fi
+      #     python3 -c "
+      #     import json
+      #     r = json.load(open('pylint-py-report.json')) + json.load(open('pylint-nb-report.json'))
+      #     json.dump(r, open('pylint-report.json','w'))
+      #     " || echo "[]" > pylint-report.json
+# ── Pylint — scan only PR-changed Python files ────────────────────────
       - name: Run pylint
         id: pylint
         continue-on-error: true
@@ -219,31 +253,32 @@ jobs:
             echo "No Python files changed in this PR — skipping pylint"
             echo "[]" > pylint-py-report.json
           else
-            # Scan only the files changed in this PR.
-            # xargs -a reads the file list from a file (correct syntax).
-            # xargs -r skips execution if the file list is empty.
+            # Scan only the files changed in this PR using .pylintrc config
             xargs -a pr-changed-py.txt -r pylint \
+              --rcfile=.pylintrc \
               --output-format=json \
-              --disable=E0401 \
               > pylint-py-report.json || true
           fi
           python3 -c "import json; json.load(open('pylint-py-report.json'))" 2>/dev/null \
             || echo "[]" > pylint-py-report.json
+          
+          # Scan converted notebooks
           if [ -d .notebook_converted ] && [ "$(ls -A .notebook_converted)" ]; then
-            pylint .notebook_converted/ --output-format=json --recursive=yes \
-              --disable=C,R,E0001,E0401 \
+            pylint .notebook_converted/ \
+              --rcfile=.pylintrc \
+              --output-format=json \
+              --recursive=yes \
               > pylint-nb-report.json || true
-            # E0001: pylint parser false positives on Japanese/Unicode chars in comments
-            # E0401: import errors expected — pyspark/project utilities not in CI env
           else
             echo "[]" > pylint-nb-report.json
           fi
+          
+          # Merge Python and notebook reports
           python3 -c "
           import json
           r = json.load(open('pylint-py-report.json')) + json.load(open('pylint-nb-report.json'))
           json.dump(r, open('pylint-report.json','w'))
           " || echo "[]" > pylint-report.json
-
       # ── Pytest (skipped until tests are added) ────────────────────────────
       - name: Run Pytest
         run: |

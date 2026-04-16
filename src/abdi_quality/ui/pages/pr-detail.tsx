@@ -27,6 +27,7 @@ import {
   Copy,
   FileCode,
   TestTube,
+  Info,
 } from "lucide-react";
 import {
   BarChart,
@@ -168,6 +169,8 @@ function FindingsTable({
       ? defaultFilter.toLowerCase()
       : "all";
   const [filter, setFilter] = useState<string>(safeDefault);
+  const [groupByFile, setGroupByFile] = useState(false);
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
   const filtered = (() => {
     const list =
@@ -186,6 +189,26 @@ function FindingsTable({
     });
   })();
 
+  // Group findings by file path, sorted by count descending.
+  const fileGroups = (() => {
+    if (!groupByFile) return [];
+    const groups: Record<string, ToolFinding[]> = {};
+    for (const f of filtered) {
+      const key = f.file || "(unknown)";
+      (groups[key] ??= []).push(f);
+    }
+    return Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+  })();
+
+  const toggleFile = (file: string) => {
+    setExpandedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(file)) next.delete(file);
+      else next.add(file);
+      return next;
+    });
+  };
+
   if (findings.length === 0)
     return (
       <p className="text-sm text-muted-foreground">No findings in this category.</p>
@@ -193,8 +216,7 @@ function FindingsTable({
 
   return (
     <div className="space-y-3">
-      {/* Severity filter pills — lets the reviewer isolate the blocking
-          findings (e.g. 6 pylint errors) from the long tail of warnings. */}
+      {/* Severity filter pills + group-by-file toggle */}
       <div className="flex flex-wrap items-center gap-1.5">
         <button
           onClick={() => setFilter("all")}
@@ -222,57 +244,174 @@ function FindingsTable({
             </button>
           );
         })}
+
+        {/* Separator + group toggle */}
+        <span className="mx-1 text-border">|</span>
+        <button
+          onClick={() => {
+            setGroupByFile((v) => !v);
+            setExpandedFiles(new Set());
+          }}
+          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+            groupByFile
+              ? "bg-primary text-primary-foreground"
+              : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+          }`}
+        >
+          <FileCode className="h-3 w-3" />
+          Group by file
+        </button>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-muted-foreground">
-              <th className="pb-2 font-medium">Rule</th>
-              <th className="pb-2 font-medium">Severity</th>
-              <th className="pb-2 font-medium">File</th>
-              <th className="pb-2 font-medium text-right">Line</th>
-              <th className="pb-2 font-medium">Message</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((f, i) => (
-              <tr
-                key={`${f.rule_id}-${f.file}-${f.line}-${i}`}
-                className="border-b border-border/50"
-              >
-                <td className="py-1.5 text-xs">
-                  <span className="font-medium">{f.rule_name || f.rule_id}</span>
-                  {f.rule_name && f.rule_name !== f.rule_id && (
-                    <span className="ml-1 text-muted-foreground font-mono">({f.rule_id})</span>
+      {/* Grouped view */}
+      {groupByFile ? (
+        <div className="space-y-1">
+          {fileGroups.map(([file, items]) => {
+            const isOpen = expandedFiles.has(file);
+            // Build a mini severity summary for the file header
+            const sevSummary: Record<string, number> = {};
+            for (const f of items) {
+              const s = (f.severity || "unknown").toLowerCase();
+              sevSummary[s] = (sevSummary[s] || 0) + 1;
+            }
+            return (
+              <div key={file} className="border border-border/50 rounded-md">
+                <button
+                  onClick={() => toggleFile(file)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-secondary/50 transition-colors"
+                >
+                  {isOpen ? (
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   )}
-                </td>
-                <td className="py-1.5">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getSeverityColor(f.severity)}`}
-                  >
-                    {f.severity || "unknown"}
+                  <span className="font-mono text-xs truncate flex-1">
+                    {file}
                   </span>
-                </td>
-                <td className="py-1.5 font-mono text-xs max-w-[200px] truncate">
-                  {f.file}
-                </td>
-                <td className="py-1.5 text-right font-mono text-xs">
-                  {f.line}
-                </td>
-                <td className="py-1.5 text-xs max-w-[300px] truncate">
-                  {f.message}
-                </td>
+                  <span className="shrink-0 flex items-center gap-1.5">
+                    {Object.entries(sevSummary)
+                      .sort(
+                        (a, b) => severityRank(b[0]) - severityRank(a[0])
+                      )
+                      .map(([sev, count]) => (
+                        <span
+                          key={sev}
+                          className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize ${getSeverityColor(sev)}`}
+                        >
+                          {count} {sev}
+                        </span>
+                      ))}
+                  </span>
+                </button>
+                {isOpen && (
+                  <div className="px-3 pb-2">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-left text-muted-foreground">
+                          <th className="pb-1.5 font-medium text-xs">Rule</th>
+                          <th className="pb-1.5 font-medium text-xs">Severity</th>
+                          <th className="pb-1.5 font-medium text-xs text-right">Line</th>
+                          <th className="pb-1.5 font-medium text-xs">Message</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items
+                          .sort((a, b) => (a.line || 0) - (b.line || 0))
+                          .map((f, i) => (
+                            <tr
+                              key={`${f.rule_id}-${f.line}-${i}`}
+                              className="border-b border-border/30"
+                            >
+                              <td className="py-1 text-xs">
+                                <span className="font-medium">
+                                  {f.rule_name || f.rule_id}
+                                </span>
+                                {f.rule_name && f.rule_name !== f.rule_id && (
+                                  <span className="ml-1 text-muted-foreground font-mono">
+                                    ({f.rule_id})
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-1">
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getSeverityColor(f.severity)}`}
+                                >
+                                  {f.severity || "unknown"}
+                                </span>
+                              </td>
+                              <td className="py-1 text-right font-mono text-xs">
+                                {f.line}
+                              </td>
+                              <td className="py-1 text-xs max-w-[300px] truncate">
+                                {f.message}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {fileGroups.length === 0 && (
+            <p className="text-xs text-muted-foreground mt-2">
+              No findings match the "{filter}" filter.
+            </p>
+          )}
+        </div>
+      ) : (
+        /* Flat table view (original) */
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="pb-2 font-medium">Rule</th>
+                <th className="pb-2 font-medium">Severity</th>
+                <th className="pb-2 font-medium">File</th>
+                <th className="pb-2 font-medium text-right">Line</th>
+                <th className="pb-2 font-medium">Message</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && (
-          <p className="text-xs text-muted-foreground mt-2">
-            No findings match the "{filter}" filter.
-          </p>
-        )}
-      </div>
+            </thead>
+            <tbody>
+              {filtered.map((f, i) => (
+                <tr
+                  key={`${f.rule_id}-${f.file}-${f.line}-${i}`}
+                  className="border-b border-border/50"
+                >
+                  <td className="py-1.5 text-xs">
+                    <span className="font-medium">{f.rule_name || f.rule_id}</span>
+                    {f.rule_name && f.rule_name !== f.rule_id && (
+                      <span className="ml-1 text-muted-foreground font-mono">({f.rule_id})</span>
+                    )}
+                  </td>
+                  <td className="py-1.5">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getSeverityColor(f.severity)}`}
+                    >
+                      {f.severity || "unknown"}
+                    </span>
+                  </td>
+                  <td className="py-1.5 font-mono text-xs max-w-[200px] truncate">
+                    {f.file}
+                  </td>
+                  <td className="py-1.5 text-right font-mono text-xs">
+                    {f.line}
+                  </td>
+                  <td className="py-1.5 text-xs max-w-[300px] truncate">
+                    {f.message}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length === 0 && (
+            <p className="text-xs text-muted-foreground mt-2">
+              No findings match the "{filter}" filter.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -578,7 +717,10 @@ export default function PrDetailPage() {
 
         {/* Coverage Gauge */}
         <div className="bg-card rounded-lg p-4 shadow-sm">
-          <h3 className="text-sm font-semibold mb-3">Test Coverage</h3>
+          <h3 className="text-sm font-semibold mb-1">Code Coverage</h3>
+          <p className="text-[10px] text-muted-foreground mb-2">
+            Pipeline code exercised by framework validation tests
+          </p>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <RadialBarChart
@@ -603,13 +745,16 @@ export default function PrDetailPage() {
             {formatPercentage(coverageGaugeData[0].value)}
           </p>
           <p className="text-center text-xs text-muted-foreground mt-1">
-            {data.coverage_files.length} files analyzed
+            {data.coverage_files.length} pipeline files analyzed
           </p>
         </div>
 
         {/* Test Results */}
         <div className="bg-card rounded-lg p-4 shadow-sm">
-          <h3 className="text-sm font-semibold mb-3">Test Results</h3>
+          <h3 className="text-sm font-semibold mb-1">Validation Test Results</h3>
+          <p className="text-[10px] text-muted-foreground mb-2">
+            Pytest framework tests verifying pipeline logic and data quality
+          </p>
           {testData.length > 0 ? (
             <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
@@ -651,7 +796,7 @@ export default function PrDetailPage() {
             </p>
           )}
           <div className="text-center text-xs text-muted-foreground mt-1">
-            {data.test_results.total} tests in {data.test_results.duration.toFixed(1)}s
+            {data.test_results.total} validation tests in {data.test_results.duration.toFixed(1)}s
           </div>
         </div>
 
@@ -753,7 +898,10 @@ export default function PrDetailPage() {
       {/* Coverage File Table */}
       {data.coverage_files.length > 0 && (
         <div className="bg-card rounded-lg p-4 shadow-sm">
-          <h3 className="text-sm font-semibold mb-3">Coverage by File</h3>
+          <h3 className="text-sm font-semibold mb-1">Coverage by Pipeline File</h3>
+          <p className="text-[10px] text-muted-foreground mb-2">
+            Percentage of statements exercised by validation tests per file
+          </p>
           <div className="overflow-x-auto max-h-64 overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-card">
@@ -825,6 +973,13 @@ export default function PrDetailPage() {
             )
           }
         >
+          {data.hidden_pylint_count > 0 && (
+            <div className="flex items-center gap-2 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-3 py-2 mb-3 text-xs text-blue-700 dark:text-blue-300">
+              <Info className="h-3.5 w-3.5 shrink-0" />
+              {data.hidden_pylint_count} finding{data.hidden_pylint_count === 1 ? "" : "s"} hidden
+              below min severity threshold (admin setting).
+            </div>
+          )}
           <FindingsTable
             findings={data.pylint_findings}
             defaultFilter={
@@ -846,6 +1001,13 @@ export default function PrDetailPage() {
           icon={Shield}
           count={data.bandit_findings.length}
         >
+          {data.hidden_bandit_count > 0 && (
+            <div className="flex items-center gap-2 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-3 py-2 mb-3 text-xs text-blue-700 dark:text-blue-300">
+              <Info className="h-3.5 w-3.5 shrink-0" />
+              {data.hidden_bandit_count} finding{data.hidden_bandit_count === 1 ? "" : "s"} hidden
+              below min severity threshold (admin setting).
+            </div>
+          )}
           <FindingsTable findings={data.bandit_findings} />
         </CollapsibleSection>
 
@@ -930,7 +1092,7 @@ export default function PrDetailPage() {
 
         {data.test_results.failures.length > 0 && (
           <CollapsibleSection
-            title="Test Failures"
+            title="Validation Test Failures"
             icon={TestTube}
             count={data.test_results.failures.length}
           >

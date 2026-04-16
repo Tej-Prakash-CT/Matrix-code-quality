@@ -70,7 +70,11 @@ def bugs_per_kloc(report: dict, cfg: AdminConfig | None = None) -> float | None:
     total_lines = report.get("jscpd", {}).get("total_lines", 0)
     if total_lines == 0:
         return None
-    bugs = report.get("semgrep", {}).get("count", 0)
+    # Use severity-filtered count so KPI matches the visible findings table
+    if cfg is not None:
+        bugs = len(_filter_findings(report.get("semgrep", {}).get("findings", []), cfg))
+    else:
+        bugs = report.get("semgrep", {}).get("count", 0)
     return round((bugs / total_lines) * 1000, 2)
 
 
@@ -82,7 +86,11 @@ def vulns_per_kloc(report: dict, cfg: AdminConfig | None = None) -> float | None
     total_lines = report.get("jscpd", {}).get("total_lines", 0)
     if total_lines == 0:
         return None
-    vulns = report.get("bandit", {}).get("count", 0)
+    # Use severity-filtered count so KPI matches the visible findings table
+    if cfg is not None:
+        vulns = len(_filter_findings(report.get("bandit", {}).get("findings", []), cfg))
+    else:
+        vulns = report.get("bandit", {}).get("count", 0)
     return round((vulns / total_lines) * 1000, 2)
 
 
@@ -347,12 +355,12 @@ def build_kpi_cards(report: dict, prev_report: dict | None, all_reports: list[di
 
     # ── Bugs/KLOC (semgrep) ──────────────────────────────────────────────────
     bkloc = bugs_per_kloc(report, cfg)
-    bkloc_good = (bkloc or 0) < thr.bugs_per_kloc_warning
+    bkloc_good = (bkloc or 0) <= thr.bugs_per_kloc_warning
     bkloc_danger = (bkloc or 0) > thr.bugs_per_kloc_danger
 
     # ── Vulns/KLOC (bandit) ──────────────────────────────────────────────────
     vkloc = vulns_per_kloc(report, cfg)
-    vkloc_good = (vkloc or 0) < thr.vulns_per_kloc_warning
+    vkloc_good = (vkloc or 0) <= thr.vulns_per_kloc_warning
     vkloc_danger = (vkloc or 0) > thr.vulns_per_kloc_danger
 
     # ── Hotspots (pylint + ruff + sqlfluff, respect toggles) ─────────────────
@@ -401,11 +409,11 @@ def build_kpi_cards(report: dict, prev_report: dict | None, all_reports: list[di
 
     cards = [
         KpiCard(
-            label="Coverage",
+            label="Code Coverage",
             value=f"{cov}%" if (cov_enabled and tests > 0) else "N/A",
             raw_value=cov,
             status=_kpi_status(cov_good, cov_danger) if (cov_enabled and tests > 0) else "good",
-            tooltip=f"Percentage of codebase verified by automated tests. Target: {thr.coverage_target_pct}%"
+            tooltip=f"Percentage of pipeline code exercised by framework validation tests (Pytest). Target: {thr.coverage_target_pct}%"
                     + (" [tool disabled]" if not cov_enabled else ""),
             delta=compute_delta(cov, prev.get("coverage", {}).get("total_pct")) if (prev and cov_enabled) else None,
             sparkline=_spark(cov_enabled, lambda d: d.get("coverage", {}).get("total_pct", 0)),
@@ -422,23 +430,23 @@ def build_kpi_cards(report: dict, prev_report: dict | None, all_reports: list[di
         ),
         KpiCard(
             label="Bugs / KLOC",
-            value=f"{bkloc:.1f}" if bkloc is not None else "N/A",
+            value=f"{bkloc:.2f}" if bkloc is not None else "N/A",
             raw_value=bkloc or 0,
             status=_kpi_status(bkloc_good, bkloc_danger) if bkloc is not None else "good",
             tooltip=f"Bug density (semgrep). Warn: {thr.bugs_per_kloc_warning}, Fail: {thr.bugs_per_kloc_danger}"
                     + (" [tool disabled]" if not _tool_enabled("semgrep", cfg) else ""),
             delta=compute_delta(bkloc or 0, bugs_per_kloc(prev, cfg)) if (prev and bkloc is not None) else None,
-            sparkline=_spark(_tool_enabled("semgrep", cfg), lambda d: bugs_per_kloc(d) or 0),
+            sparkline=_spark(_tool_enabled("semgrep", cfg), lambda d: bugs_per_kloc(d, cfg) or 0),
         ),
         KpiCard(
             label="Vulns / KLOC",
-            value=f"{vkloc:.1f}" if vkloc is not None else "N/A",
+            value=f"{vkloc:.2f}" if vkloc is not None else "N/A",
             raw_value=vkloc or 0,
             status=_kpi_status(vkloc_good, vkloc_danger) if vkloc is not None else "good",
             tooltip=f"Vuln density (bandit). Warn: {thr.vulns_per_kloc_warning}, Fail: {thr.vulns_per_kloc_danger}"
                     + (" [tool disabled]" if not _tool_enabled("bandit", cfg) else ""),
             delta=compute_delta(vkloc or 0, vulns_per_kloc(prev, cfg)) if (prev and vkloc is not None) else None,
-            sparkline=_spark(_tool_enabled("bandit", cfg), lambda d: vulns_per_kloc(d) or 0),
+            sparkline=_spark(_tool_enabled("bandit", cfg), lambda d: vulns_per_kloc(d, cfg) or 0),
         ),
         KpiCard(
             label="Hotspots",
@@ -461,11 +469,11 @@ def build_kpi_cards(report: dict, prev_report: dict | None, all_reports: list[di
             sparkline=_spark(_tool_enabled("gitleaks", cfg), lambda d: float(d.get("gitleaks", {}).get("count", 0))),
         ),
         KpiCard(
-            label="Tests",
+            label="Validation Tests",
             value=str(tests) if _tool_enabled("pytest", cfg) else "N/A",
             raw_value=float(tests),
             status="good",
-            tooltip="Total number of automated unit tests run."
+            tooltip="Framework validation tests (Pytest) that verify pipeline logic, transformations, and data quality rules."
                     + (" [tool disabled]" if not _tool_enabled("pytest", cfg) else ""),
             delta=compute_delta(float(tests), float(prev.get("pytest", {}).get("total", 0))) if prev else None,
             sparkline=_spark(_tool_enabled("pytest", cfg), lambda d: float(d.get("pytest", {}).get("total", 0))),
@@ -510,15 +518,15 @@ def build_scan_summary(entry: dict, report: dict, cfg: AdminConfig | None = None
         timestamp=report.get("timestamp", ""),
         status=live_status,
         coverage_pct=report.get("coverage", {}).get("total_pct", 0),
-        bugs=report.get("semgrep", {}).get("count", 0),
-        security=report.get("bandit", {}).get("count", 0),
+        bugs=len(_filter_findings(report.get("semgrep", {}).get("findings", []), cfg)),
+        security=len(_filter_findings(report.get("bandit", {}).get("findings", []), cfg)),
         secrets=report.get("gitleaks", {}).get("count", 0),
         hotspots=pylint_errors + s.get("ruff_errors", 0) + s.get("sqlfluff_errors", 0),
         duplication=report.get("jscpd", {}).get("percentage", 0),
         tests_total=report.get("pytest", {}).get("total", 0),
         quality_grade=compute_quality_grade(report, cfg),
-        bugs_per_kloc=bugs_per_kloc(report),
-        vulns_per_kloc=vulns_per_kloc(report),
+        bugs_per_kloc=bugs_per_kloc(report, cfg),
+        vulns_per_kloc=vulns_per_kloc(report, cfg),
     )
 
 
@@ -574,6 +582,34 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
     # Jscpd duplicates
     jscpd_dups = [DuplicateSegment(**d) for d in report.get("jscpd", {}).get("duplicates", [])]
 
+    # Compute pylint breakdown from severity-filtered findings so the chart
+    # matches what the findings table actually displays.
+    if _tool_enabled("pylint", cfg):
+        filtered_pylint = _filter_findings(pl.get("findings", []), cfg)
+        _pl_types = Counter((f.get("type") or "").lower() for f in filtered_pylint)
+        pl_errors = _pl_types.get("error", 0) + _pl_types.get("fatal", 0)
+        pl_warnings = _pl_types.get("warning", 0)
+        pl_conventions = _pl_types.get("convention", 0)
+        pl_refactors = _pl_types.get("refactor", 0)
+        # Count filtered notebook / py files
+        pl_nb = sum(1 for f in filtered_pylint if f.get("source") == "notebook")
+        pl_py = len(filtered_pylint) - pl_nb
+        # Raw (unfiltered) counts for the hidden-findings banner
+        raw_pylint_count = len(pl.get("findings", []))
+        hidden_pylint = raw_pylint_count - len(filtered_pylint)
+    else:
+        pl_errors = pl_warnings = pl_conventions = pl_refactors = 0
+        pl_nb = pl_py = 0
+        hidden_pylint = 0
+
+    # Hidden bandit findings (filtered out by severity)
+    raw_bandit_count = len(bd.get("findings", []))
+    if _tool_enabled("bandit", cfg):
+        filtered_bandit = _filter_findings(bd.get("findings", []), cfg)
+        hidden_bandit = raw_bandit_count - len(filtered_bandit)
+    else:
+        hidden_bandit = 0
+
     return ScanDetailOut(
         pr_number=str(report.get("pr_number", "")),
         pr_title=report.get("pr_title", ""),
@@ -586,17 +622,17 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
         status=_evaluate_scan_status(report, cfg),
         quality_grade=compute_quality_grade(report, cfg),
         technical_debt=compute_technical_debt(report),
-        bugs_per_kloc=bugs_per_kloc(report),
-        vulns_per_kloc=vulns_per_kloc(report),
+        bugs_per_kloc=bugs_per_kloc(report, cfg),
+        vulns_per_kloc=vulns_per_kloc(report, cfg),
         loc=report.get("jscpd", {}).get("total_lines", 0),
         kpi_cards=build_kpi_cards(report, prev_report, all_reports, cfg),
         pylint_breakdown=PylintBreakdown(
-            errors=pl.get("errors", 0),
-            warnings=pl.get("warnings", 0),
-            conventions=pl.get("conventions", 0),
-            refactors=pl.get("refactors", 0),
-            nb_count=pl.get("nb_count", 0),
-            py_count=pl.get("py_count", 0),
+            errors=pl_errors,
+            warnings=pl_warnings,
+            conventions=pl_conventions,
+            refactors=pl_refactors,
+            nb_count=pl_nb,
+            py_count=pl_py,
         ),
         bandit_severity=BanditSeverity(
             high=bd.get("high", 0) if severity_passes("high", cfg) else 0,
@@ -625,6 +661,8 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
         ai_review=report.get("ai_review"),
         duplication_pct=report.get("jscpd", {}).get("percentage", 0),
         total_issues=s.get("total_issues", 0),
+        hidden_pylint_count=hidden_pylint,
+        hidden_bandit_count=hidden_bandit,
     )
 
 

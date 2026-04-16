@@ -49,7 +49,7 @@
   "thresholds": {
     "coverage_target_pct": 80.0,
     "duplication_warning_pct": 30.0,
-    "duplication_fail_pct": 10.0,
+    "duplication_fail_pct": 20.0,
     "bugs_per_kloc_warning": 0.0,
     "bugs_per_kloc_danger": 5.0,
     "vulns_per_kloc_warning": 0.0,
@@ -68,9 +68,13 @@
     "tests": 0.05
   },
   "severity_filter": {
-    "min_severity": "high",
-    "fail_on": [
+    "min_severity": [
       "high"
+    ],
+    "fail_on": [
+      "high",
+      "medium",
+      "low"
     ]
   },
   "ignored_rules": []

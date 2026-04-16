@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 # Stored next to this file (or override via ADMIN_CONFIG_PATH env var)
 _DEFAULT_CONFIG_PATH = Path(__file__).parent / "admin_config.json"
@@ -41,11 +41,19 @@ class GradeWeights(BaseModel):
 
 
 class SeverityFilter(BaseModel):
-    # Findings below this severity are hidden from all dashboards/counts.
-    # Accepted values: "high", "medium", "low".
-    min_severity: str = "high"
+    # Severity levels visible on dashboards/counts.
+    # Multi-select: e.g. ["high", "medium"] shows both high and medium findings.
+    min_severity: list[str] = ["high"]
     # Severities that cause a PR to fail.
     fail_on: list[str] = ["high"]
+
+    @field_validator("min_severity", mode="before")
+    @classmethod
+    def _coerce_to_list(cls, v: str | list[str]) -> list[str]:
+        """Backward compat: accept a single string from old config files."""
+        if isinstance(v, str):
+            return [v]
+        return v
 
 
 class AdminConfig(BaseModel):
@@ -72,10 +80,13 @@ _SEVERITY_RANK = {
 
 
 def severity_passes(severity: str, cfg: AdminConfig) -> bool:
-    """Return True if this severity meets the configured minimum."""
-    min_rank = _SEVERITY_RANK.get(cfg.severity_filter.min_severity.lower(), 3)
+    """Return True if this severity is among the selected visibility levels."""
+    visible_ranks = {
+        _SEVERITY_RANK.get(s.lower(), 0)
+        for s in cfg.severity_filter.min_severity
+    }
     sev_rank = _SEVERITY_RANK.get((severity or "").lower(), 0)
-    return sev_rank >= min_rank
+    return sev_rank in visible_ranks
 
 
 def rule_allowed(rule_id: str, cfg: AdminConfig) -> bool:

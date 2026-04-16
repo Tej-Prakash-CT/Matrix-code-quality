@@ -189,7 +189,7 @@ export default function OverviewPage() {
                 <th className="pb-2 font-medium">Branch</th>
                 <th className="pb-2 font-medium">Status</th>
                 <th className="pb-2 font-medium">Grade</th>
-                <th className="pb-2 font-medium text-right">Coverage</th>
+                <th className="pb-2 font-medium text-right">Code Coverage</th>
                 <th className="pb-2 font-medium text-right">Bugs</th>
                 <th className="pb-2 font-medium text-right">Security</th>
                 <th className="pb-2 font-medium">Date</th>
