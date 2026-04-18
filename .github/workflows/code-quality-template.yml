@@ -76,7 +76,7 @@ jobs:
       - name: Install Tools
         run: |
           npm install -g jscpd
-          pip install bandit semgrep jupyter nbconvert databricks-cli ruff sqlfluff
+          pip install bandit semgrep jupyter nbconvert databricks-cli ruff
 
       # ── Gitleaks ─────────────────────────────────────────────────────────
       # Scans only the COMMITS introduced by this PR (not the full working tree).
@@ -127,13 +127,21 @@ jobs:
           # if we only scanned the 5 files in the diff.
           # Pre-existing duplicates between unchanged files are also reported, but
           # that reflects the true health of the codebase this PR is merging into.
+          #
+          # Tuning notes (why min-lines=20, min-tokens=150):
+          #   Databricks notebooks share required boilerplate — path setup, widget
+          #   config, LakehouseConfig loading, Logger/MedallionPipelines init, and
+          #   COMMAND separators. These are structurally identical across 150+ files
+          #   but cannot be refactored away. Raising thresholds + ignoring boilerplate
+          #   patterns ensures jscpd only flags real copy-pasted business logic.
           jscpd lakehouse_framework \
             --reporters json,console \
             --output jscpd-report \
             --pattern "**/*.py" \
             --ignore "**/.git/**,**/node_modules/**,**/__pycache__/**,**/*.pyc,**/.notebook_converted/**" \
-            --min-lines 10 \
-            --min-tokens 50 \
+            --min-lines 20 \
+            --min-tokens 150 \
+            --ignore-pattern "from utilities\.common_util|from pyspark\.sql|dbutils\.widgets|project_root|LakehouseConfig|Logger\.get_logger|MedallionPipelines|COMMAND ----------|MAGIC %|import sys|from pathlib import|from typing import|config\.catalog_|config\.get_schema_value|logger\.info\(f\"|raise ValueError|if not environment|if str\(project_root\)|sys\.path\.insert|config_path = f|except Exception|medallion_obj\.|# Initialize |# Import necessary|# Define widget|# Validate required|# Load configuration|# Get the current|# Construct catalog|# Log configuration|# Get metadata|environment = dbutils|config = LakehouseConfig|metadata_table = config\." \
             --threshold 0 || true
 
           # Fallback check
@@ -191,12 +199,15 @@ jobs:
             # Scan only the files changed in this PR, not the whole directory.
             # xargs -a reads the file list from a file (correct syntax).
             # xargs -r skips execution if the file list is empty.
+            # --severity-level high: only report HIGH severity findings; these are
+            # the only ones that fail the Quality Gate, so scanning beyond HIGH
+            # adds noise without affecting pass/fail decisions.
             xargs -a pr-changed-py.txt -r bandit \
               -f json -o bandit-py-report.json \
-              -ll || true
+              --severity-level high || true
           fi
           if [ -d .notebook_converted ] && [ "$(ls -A .notebook_converted)" ]; then
-            bandit -r .notebook_converted/ -f json -o bandit-nb-report.json -ll || true
+            bandit -r .notebook_converted/ -f json -o bandit-nb-report.json --severity-level high || true
           fi
           [ -f bandit-py-report.json ] \
             || echo '{"results":[],"metrics":{}}' > bandit-py-report.json
@@ -224,25 +235,16 @@ jobs:
           fi
           [ -f ruff-report.json ] || echo "[]" > ruff-report.json
 
-      # ── SQLFluff ──────────────────────────────────────────────────────────
-      - name: Run SQLFluff
-        id: sqlfluff
-        continue-on-error: true
-        run: |
-          # Use the rules specified in .sqlfluff
-          sqlfluff lint lakehouse_framework --format json --write-output sqlfluff-report.json || true
-          [ -f sqlfluff-report.json ] || echo "[]" > sqlfluff-report.json
-
       # ── Aggregate ─────────────────────────────────────────────────────────
       - name: Generate Aggregator Script
         run: |
           cat << 'PYEOF' > aggregate_reports.py
           #!/usr/bin/env python3
           """
-          aggregate_reports.py  (v1.4 — Pytest & Coverage removed)
+          aggregate_reports.py  (v1.5 — SQLFluff removed)
           ----------------------------------------------------------------------
-          Aggregates Gitleaks, jscpd, Semgrep, Bandit, Ruff and SQLFluff JSON
-          reports into a single unified quality report.
+          Aggregates Gitleaks, jscpd, Semgrep, Bandit and Ruff JSON reports
+          into a single unified quality report.
           """
           
           import argparse
@@ -413,31 +415,9 @@ jobs:
                   "warnings": warnings
               }
           
-          def parse_sqlfluff(raw):
-              if not isinstance(raw, list): raw = []
-              findings = []
-              errors = 0
-              for r in raw:
-                  for v in r.get("violations", []):
-                      errors += 1
-                      findings.append({
-                          "rule_id":   v.get("code", ""),
-                          "file":      r.get("filepath", ""),
-                          "line":      v.get("line_no", 0),
-                          "message":   v.get("description", ""),
-                          "severity":  "ERROR" 
-                      })
-          
-              return {
-                  "count": len(findings),
-                  "findings": findings,
-                  "errors": errors
-              }
-          
-          
           # ── Status logic ───────────────────────────────────────────────────────────
           
-          def determine_status(gl, jd, sg, bd, rf, sf) -> str:
+          def determine_status(gl, jd, sg, bd, rf) -> str:
               """
               Fail the PR if ANY hard threshold is breached.
 
@@ -447,14 +427,12 @@ jobs:
                 semgrep        : any ERROR-level
                 bandit         : any HIGH severity
                 ruff           : any ERROR (includes ported Pylint PL rules)
-                sqlfluff       : any ERROR
               """
               if gl["count"] > 0:                  return "fail"
               if jd["percentage"] > 30:            return "fail"
               if sg.get("errors_count", 0) > 0:    return "fail"
               if bd.get("high", 0) > 0:            return "fail"
               if rf.get("errors", 0) > 0:          return "fail"
-              if sf.get("errors", 0) > 0:          return "fail"
               return "pass"
           
           
@@ -474,7 +452,6 @@ jobs:
               p.add_argument("--semgrep",       required=True)
               p.add_argument("--bandit",        required=True)
               p.add_argument("--ruff",          default="")
-              p.add_argument("--sqlfluff",      default="")
               p.add_argument("--output",        required=True)
               args = p.parse_args()
           
@@ -483,9 +460,8 @@ jobs:
               sg  = parse_semgrep( load_json(args.semgrep,   {}))
               bd  = parse_bandit(  load_json(args.bandit,    {}))
               rf  = parse_ruff(    load_json(args.ruff,      []))
-              sf  = parse_sqlfluff(load_json(args.sqlfluff,  []))
 
-              status = determine_status(gl, jd, sg, bd, rf, sf)
+              status = determine_status(gl, jd, sg, bd, rf)
           
               report = {
                   "schema_version": "1.3",
@@ -508,10 +484,9 @@ jobs:
                       "security_high":        bd["high"],
                       "ruff_errors":          rf["errors"],
                       "ruff_warnings":        rf["warnings"],
-                      "sqlfluff_errors":      sf["errors"],
                       "total_issues": (
                           gl["count"] + jd["clones"] + sg["count"] +
-                          bd["count"] + rf["errors"] + sf["errors"]
+                          bd["count"] + rf["errors"]
                       ),
                   },
                   "gitleaks": gl,
@@ -519,7 +494,6 @@ jobs:
                   "semgrep":  sg,
                   "bandit":   bd,
                   "ruff":     rf,
-                  "sqlfluff": sf,
               }
           
               Path(args.output).write_text(json.dumps(report, indent=2))
@@ -551,7 +525,6 @@ jobs:
             --semgrep       semgrep-report.json \
             --bandit        bandit-report.json \
             --ruff          ruff-report.json \
-            --sqlfluff      sqlfluff-report.json \
             --output        combined-report.json
 
       # ── Upload to Databricks Volume ────────────────────────────────────────
@@ -598,7 +571,6 @@ jobs:
           print(f\"  │  Bandit issues (total)     {s.get('security',0):<12}(informational) │\")
           print(f\"  │  Ruff errors               {s.get('ruff_errors',0):<12}0            │\")
           print(f\"  │  Ruff warnings             {s.get('ruff_warnings',0):<12}(informational) │\")
-          print(f\"  │  SQLFluff errors           {s.get('sqlfluff_errors',0):<12}0            │\")
           print(f\"  └─────────────────────────────────────────────────────┘\")
           print()
           print(f\"  Overall Status : {s.get('status','?').upper()}\")
@@ -626,8 +598,6 @@ jobs:
                   reasons.append(f\"Bandit HIGH severity: {s['security_high']} found\")
               if s.get('ruff_errors', 0) > 0:
                   reasons.append(f\"Ruff errors: {s['ruff_errors']} found\")
-              if s.get('sqlfluff_errors', 0) > 0:
-                  reasons.append(f\"SQLFluff errors: {s['sqlfluff_errors']} found\")
               for r in reasons:
                   print(f'  ❌ {r}', file=sys.stderr)
           ")

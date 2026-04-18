@@ -212,7 +212,7 @@ export default function WelcomePage() {
             {
               step: "2",
               title: "8 Scanners Run",
-              desc: "CI pipeline runs Gitleaks, Semgrep, Bandit, Ruff, jscpd, SQLFluff",
+              desc: "CI pipeline runs Gitleaks, Semgrep, Bandit, Ruff, jscpd",
               color: "bg-violet-500",
             },
             {
