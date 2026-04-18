@@ -231,10 +231,18 @@ jobs:
             echo "No Python files changed in this PR — skipping Ruff"
             echo "[]" > ruff-report.json
           else
+            # --output-format json (not --format — removed in Ruff 0.6+).
+            # Ruff writes the report to stdout; redirect to the report file
+            # rather than using -o (which is a no-op in check mode in some
+            # Ruff versions and silently produced an empty report).
             xargs -a pr-changed-py.txt -r ruff check \
-              --format json -o ruff-report.json || true
+              --output-format json > ruff-report.json || true
           fi
-          [ -f ruff-report.json ] || echo "[]" > ruff-report.json
+          # Ensure the file exists and is valid JSON; otherwise the aggregator
+          # would log a parse warning and every PR would show zero Ruff findings.
+          python3 -c "import json; json.load(open('ruff-report.json'))" 2>/dev/null \
+            || echo "[]" > ruff-report.json
+          echo "Ruff findings: $(python3 -c "import json; print(len(json.load(open('ruff-report.json'))))")"
 
       # ── Aggregate ─────────────────────────────────────────────────────────
       - name: Generate Aggregator Script

@@ -2,7 +2,7 @@ name: Deploy Dashboard to Databricks Apps
 
 on:
   push:
-    branches: [master, feature/matrix_ui_v.5]
+    branches: [master]
     paths:
       - "src/**"
       - "app.yaml"
