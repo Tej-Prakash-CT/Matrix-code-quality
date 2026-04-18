@@ -20,30 +20,10 @@
       "display_name": "Bandit",
       "description": "Python Security Analysis"
     },
-    "pylint": {
-      "enabled": true,
-      "display_name": "Pylint",
-      "description": "Python Code Quality & Linting"
-    },
     "ruff": {
       "enabled": true,
       "display_name": "Ruff",
-      "description": "Fast Python Linting"
-    },
-    "sqlfluff": {
-      "enabled": true,
-      "display_name": "SQLFluff",
-      "description": "SQL Standards & Style"
-    },
-    "pytest": {
-      "enabled": true,
-      "display_name": "Pytest",
-      "description": "Unit Test Execution"
-    },
-    "coverage": {
-      "enabled": true,
-      "display_name": "Coverage.py",
-      "description": "Test Coverage Measurement"
+      "description": "Fast Python Linting (includes ported Pylint PL rules)"
     }
   },
   "thresholds": {
@@ -60,12 +40,12 @@
     "tech_debt_ratio_danger_pct": 50.0
   },
   "grade_weights": {
-    "reliability": 0.25,
-    "security": 0.25,
-    "maintainability": 0.2,
-    "coverage": 0.15,
-    "duplication": 0.1,
-    "tests": 0.05
+    "reliability": 0.30,
+    "security": 0.30,
+    "maintainability": 0.25,
+    "coverage": 0.0,
+    "duplication": 0.15,
+    "tests": 0.0
   },
   "severity_filter": {
     "min_severity": [

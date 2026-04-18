@@ -297,12 +297,6 @@ function ThresholdsPane({
   return (
     <div className="bg-card rounded-lg p-4 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4">
       <NumberInput
-        label="Coverage target"
-        value={t.coverage_target_pct}
-        onChange={(v) => set({ coverage_target_pct: v })}
-        suffix="%"
-      />
-      <NumberInput
         label="Duplication warning"
         value={t.duplication_warning_pct}
         onChange={(v) => set({ duplication_warning_pct: v })}
@@ -376,7 +370,6 @@ function WeightsPane({
     w.reliability +
     w.security +
     w.maintainability +
-    w.coverage +
     w.duplication +
     w.tests;
 
@@ -384,7 +377,6 @@ function WeightsPane({
     ["reliability", "Reliability"],
     ["security", "Security"],
     ["maintainability", "Maintainability"],
-    ["coverage", "Coverage"],
     ["duplication", "Duplication"],
     ["tests", "Tests"],
   ];

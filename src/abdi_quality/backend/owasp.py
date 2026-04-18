@@ -43,7 +43,7 @@ OWASP_MAPPING: dict[str, tuple[str, str]] = {
     "B605": ("A03:2021", "Injection"),
     "B606": ("A03:2021", "Injection"),
     "B607": ("A03:2021", "Injection"),
-    "B608": ("A03:2021", "Injection"),
+    # B608 (SQL string construction) excluded — expected pattern in Spark/Databricks
     "B609": ("A03:2021", "Injection"),
     "B610": ("A03:2021", "Injection"),
     "B611": ("A03:2021", "Injection"),

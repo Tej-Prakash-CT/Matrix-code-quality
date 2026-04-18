@@ -68,6 +68,10 @@ select = [
     "RET",  # flake8-return
     "S",    # flake8-bandit – no hardcoded secrets (Section 6.1: S105, S106)
     "RUF",  # Ruff-specific rules
+    # Pylint-equivalent checks (ported to Ruff; replaces standalone Pylint)
+    "PLE",  # Pylint errors (likely bugs: no-member, return outside function, etc.)
+    "PLW",  # Pylint warnings (unreachable code, redefined-loop-name, etc.)
+    "PLC",  # Pylint conventions (high-signal: import-outside-toplevel, etc.)
 ]
 ignore = [
     # Japanese Unicode — mandatory for 漢字/カタカナ/ひらがな text
@@ -92,6 +96,9 @@ ignore = [
     "UP031",   # use format specifiers instead of str() — keep {str(e)} for framework consistency
     "UP032",   # use f-string instead of format call — keep {str(e)} for framework consistency
     "RUF010",  # explicit-f-string-type-conversion — keep {str(e)} not {e!s} per framework convention
+    # Pylint-ported relaxations (avoid noise on Databricks/PySpark patterns)
+    "PLC0415", # import-outside-toplevel — common in notebooks / lazy imports
+    "PLW2901", # redefined-loop-name — idiomatic in pandas/pyspark transforms
 ]
  
 # ---------------------------------------------------------------------------

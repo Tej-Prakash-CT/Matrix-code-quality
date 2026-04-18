@@ -10,12 +10,9 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   Legend,
-  AreaChart,
-  Area,
 } from "recharts";
 
 const METRIC_COLORS: Record<string, string> = {
-  coverage_pct: "#4caf50",
   bugs: "#ef4444",
   security: "#f97316",
   secrets: "#ec4899",
@@ -38,7 +35,7 @@ export default function TrendsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(
-    new Set(["coverage_pct", "bugs", "security"])
+    new Set(["bugs", "security", "duplication"])
   );
   const [limit, setLimit] = useState(50);
 
@@ -63,15 +60,22 @@ export default function TrendsPage() {
     });
   };
 
+  // Exclude removed metrics (coverage, tests) from the entire trends view.
+  // Matches both legacy keys from older reports and the current backend keys.
+  const visibleSeries = useMemo(() => {
+    if (!data) return [];
+    const hidden = new Set(["coverage", "coverage_pct", "tests"]);
+    return data.series.filter((s) => !hidden.has(s.metric));
+  }, [data]);
+
   // Merge all series into a single dataset keyed by pr_number
   const mergedData = useMemo(() => {
-    if (!data) return [];
     const map = new Map<
       string,
       Record<string, string | number>
     >();
 
-    data.series.forEach((series) => {
+    visibleSeries.forEach((series) => {
       series.data.forEach((point) => {
         const key = `${point.pr_number}-${point.timestamp}`;
         if (!map.has(key)) {
@@ -90,29 +94,11 @@ export default function TrendsPage() {
         new Date(a.timestamp as string).getTime() -
         new Date(b.timestamp as string).getTime()
     );
-  }, [data]);
+  }, [visibleSeries]);
 
   const selectedSeries = useMemo(() => {
-    if (!data) return [];
-    return data.series.filter((s) => selectedMetrics.has(s.metric));
-  }, [data, selectedMetrics]);
-
-  // Build an area chart dataset for the coverage trend specifically
-  const coverageSeries = useMemo(() => {
-    if (!data) return [];
-    const series = data.series.find((s) => s.metric === "coverage_pct");
-    if (!series) return [];
-    return series.data
-      .map((p) => ({
-        label: `#${p.pr_number}`,
-        timestamp: p.timestamp,
-        value: p.value,
-      }))
-      .sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      );
-  }, [data]);
+    return visibleSeries.filter((s) => selectedMetrics.has(s.metric));
+  }, [visibleSeries, selectedMetrics]);
 
   // Returns true when all data points in a series have the same value (flat / tool disabled)
   function isFlat(series: TrendSeries): boolean {
@@ -131,7 +117,7 @@ export default function TrendsPage() {
         </div>
       </div>
     );
-  if (!data || data.series.length === 0)
+  if (!data || visibleSeries.length === 0)
     return (
       <p className="text-muted-foreground">
         No trend data available. Run more scans to generate trends.
@@ -164,7 +150,7 @@ export default function TrendsPage() {
         </div>
 
         <div className="border-l border-border pl-3 flex flex-wrap gap-2">
-          {data.series.map((series) => (
+          {visibleSeries.map((series) => (
             <button
               key={series.metric}
               onClick={() => toggleMetric(series.metric)}
@@ -233,66 +219,9 @@ export default function TrendsPage() {
         </div>
       </div>
 
-      {/* Coverage Area Chart */}
-      {coverageSeries.length > 0 && (
-        <div className="bg-card rounded-lg p-4 shadow-sm">
-          <h2 className="text-lg font-semibold mb-4">Coverage Trend</h2>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={coverageSeries} margin={{ left: 10, right: 10 }}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="var(--color-border)"
-                />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 10 }}
-                  stroke="var(--color-muted-foreground)"
-                />
-                <YAxis
-                  domain={[0, 100]}
-                  tick={{ fontSize: 10 }}
-                  stroke="var(--color-muted-foreground)"
-                  tickFormatter={(v) => `${v}%`}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--color-card)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: "0.375rem",
-                    color: "var(--color-foreground)",
-                  }}
-                  formatter={(v: number) => [`${v.toFixed(1)}%`, "Coverage"]}
-                  labelFormatter={(label) => `PR ${label}`}
-                />
-                <defs>
-                  <linearGradient
-                    id="coverageGradient"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
-                    <stop offset="5%" stopColor="#4caf50" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#4caf50" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#4caf50"
-                  strokeWidth={2}
-                  fill="url(#coverageGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
       {/* Individual Metric Sparklines */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {data.series.map((series) => {
+        {visibleSeries.map((series) => {
           const sorted = [...series.data].sort(
             (a, b) =>
               new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
@@ -318,8 +247,6 @@ export default function TrendsPage() {
                     {delta > 0 ? "+" : ""}
                     {delta.toFixed(1)}
                   </span>
-                ) : allZero ? (
-                  <span className="text-xs text-muted-foreground italic">disabled</span>
                 ) : null}
               </div>
               <div className={`text-xl font-bold mb-2 ${allZero ? "text-muted-foreground" : ""}`}>

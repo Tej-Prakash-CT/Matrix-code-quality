@@ -43,10 +43,10 @@ const pages = [
     description:
       "Contributor-level insights showing who is submitting code, their pass rates, and team-wide quality metrics.",
     highlights: [
-      { icon: Users, text: "Per-author pass rate & coverage" },
+      { icon: Users, text: "Per-author pass rate & bug density" },
       { icon: BarChart3, text: "Pass/Fail breakdown by contributor" },
       { icon: GitPullRequest, text: "Recent scan history" },
-      { icon: Target, text: "Team KPIs: scans, pass rate, coverage" },
+      { icon: Target, text: "Team KPIs: scans, pass rate, active authors" },
     ],
   },
   {
@@ -57,10 +57,10 @@ const pages = [
     borderColor: "border-violet-200 dark:border-violet-800",
     title: "Trend Analysis",
     description:
-      "Track how code quality evolves over time across coverage, bugs, duplication, security issues, and technical debt.",
+      "Track how code quality evolves over time across bugs, duplication, security issues, and technical debt.",
     highlights: [
       { icon: TrendingUp, text: "Multi-metric time-series charts" },
-      { icon: Layers, text: "Coverage, bugs, duplication, hotspots" },
+      { icon: Layers, text: "Bugs, duplication, hotspots" },
       { icon: Activity, text: "Tech debt ratio trend" },
       { icon: Target, text: "Scan-over-scan comparison" },
     ],
@@ -92,8 +92,8 @@ const pages = [
       "Deep dive into any pull request: certification status, per-tool findings, severity breakdowns, and AI review.",
     highlights: [
       { icon: Target, text: "Pass/Fail certification with quality grade" },
-      { icon: Gauge, text: "Coverage gauge & issues donut chart" },
-      { icon: Layers, text: "Pylint, Ruff, Bandit, SQLFluff breakdowns" },
+      { icon: Gauge, text: "Issues donut & severity breakdowns" },
+      { icon: Layers, text: "Ruff & Bandit breakdowns" },
       { icon: FileSearch, text: "Expandable finding details per tool" },
     ],
   },
@@ -104,11 +104,7 @@ const toolsBadges = [
   { name: "jscpd", desc: "Code Duplication" },
   { name: "Semgrep", desc: "Bug Detection" },
   { name: "Bandit", desc: "Security Analysis" },
-  { name: "Pylint", desc: "Code Quality" },
-  { name: "Ruff", desc: "Fast Linting" },
-  { name: "SQLFluff", desc: "SQL Standards" },
-  { name: "Pytest", desc: "Unit Testing" },
-  { name: "Coverage.py", desc: "Test Coverage" },
+  { name: "Ruff", desc: "Fast Linting + Pylint rules" },
 ];
 
 export default function WelcomePage() {
@@ -125,7 +121,7 @@ export default function WelcomePage() {
         </h1>
         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
           Comprehensive code quality monitoring for the Autobacs Teradata-to-Databricks migration.
-          9 scanning tools, automated PR gates, and actionable insights.
+          8 scanning tools, automated PR gates, and actionable insights.
         </p>
       </div>
 
@@ -215,8 +211,8 @@ export default function WelcomePage() {
             },
             {
               step: "2",
-              title: "9 Scanners Run",
-              desc: "CI pipeline runs Gitleaks, Semgrep, Bandit, Pylint, Ruff, SQLFluff, jscpd, Pytest, Coverage",
+              title: "8 Scanners Run",
+              desc: "CI pipeline runs Gitleaks, Semgrep, Bandit, Ruff, jscpd, SQLFluff",
               color: "bg-violet-500",
             },
             {
@@ -254,7 +250,7 @@ export default function WelcomePage() {
           {[
             {
               label: "Quality Grade",
-              desc: "A-E composite score: Reliability (25%), Security (25%), Maintainability (20%), Coverage (15%), Duplication (10%), Tests (5%).",
+              desc: "A-E composite score: Reliability (30%), Security (30%), Maintainability (25%), Duplication (15%).",
             },
             {
               label: "Bugs / KLOC",
@@ -269,16 +265,12 @@ export default function WelcomePage() {
               desc: "Severity-filtered Bandit security findings per 1,000 lines. Only findings at or above the admin min severity are counted. \u2264 0.0 is good, > 3.0 is critical (admin-configurable).",
             },
             {
-              label: "Code Coverage",
-              desc: "Percentage of pipeline code exercised by framework validation tests (Pytest). These tests verify data transformations, pipeline logic, and quality rules \u2014 not business logic. Target: \u2265 80%. Below 50% is danger zone.",
-            },
-            {
               label: "Duplication",
               desc: "Percentage of identical code blocks (jscpd). \u2264 20% is good, > 20% needs refactoring (admin-configurable).",
             },
             {
               label: "Hotspots",
-              desc: "Sum of Pylint errors + Ruff errors + SQLFluff errors. \u2264 5 is good, > 10 is critical (admin-configurable).",
+              desc: "Sum of Ruff errors (includes ported Pylint PL rules). \u2264 5 is good, > 10 is critical (admin-configurable).",
             },
             {
               label: "OWASP Mapping",

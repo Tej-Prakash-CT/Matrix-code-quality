@@ -7,7 +7,7 @@ import {
   getStatusColor,
   getGradeColor,
 } from "@/lib/formatters";
-import { Users, CheckCircle, XCircle, BarChart3, Activity } from "lucide-react";
+import { Users, CheckCircle, XCircle, BarChart3 } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -24,10 +24,13 @@ import {
   Radar,
 } from "recharts";
 
+type Drilldown = { author: string; status: "pass" | "fail" } | null;
+
 export default function TeamPage() {
   const [data, setData] = useState<TeamHealthOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [drilldown, setDrilldown] = useState<Drilldown>(null);
 
   useEffect(() => {
     api
@@ -61,7 +64,6 @@ export default function TeamPage() {
   const radarData = data.contributors.slice(0, 5).map((c) => ({
     author: c.author,
     "Pass Rate": c.pass_rate,
-    Coverage: c.avg_coverage,
     "PR Count": Math.min((c.total_prs / Math.max(...data.contributors.map((x) => x.total_prs))) * 100, 100),
     "Bug-Free": Math.max(0, 100 - c.total_bugs * 10),
     "Sec-Clean": Math.max(0, 100 - c.total_security * 10),
@@ -92,17 +94,6 @@ export default function TeamPage() {
       color: data.failing_prs === 0 ? "border-green-500" : "border-red-500",
     },
     {
-      label: "Avg Coverage",
-      value: formatPercentage(data.avg_coverage),
-      icon: Activity,
-      color:
-        data.avg_coverage >= 80
-          ? "border-green-500"
-          : data.avg_coverage >= 50
-            ? "border-yellow-500"
-            : "border-red-500",
-    },
-    {
       label: "Active Authors",
       value: data.active_authors.toString(),
       icon: Users,
@@ -121,7 +112,7 @@ export default function TeamPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {kpiCards.map((card) => (
           <div
             key={card.label}
@@ -181,16 +172,39 @@ export default function TeamPage() {
                   stackId="a"
                   fill="#4caf50"
                   radius={[0, 0, 0, 0]}
+                  style={{ cursor: "pointer" }}
+                  onClick={(p) => {
+                    const author = (p as { author?: string })?.author;
+                    if (!author) return;
+                    setDrilldown((cur) =>
+                      cur && cur.author === author && cur.status === "pass"
+                        ? null
+                        : { author, status: "pass" },
+                    );
+                  }}
                 />
                 <Bar
                   dataKey="Fail"
                   stackId="a"
                   fill="#ef4444"
                   radius={[4, 4, 0, 0]}
+                  style={{ cursor: "pointer" }}
+                  onClick={(p) => {
+                    const author = (p as { author?: string })?.author;
+                    if (!author) return;
+                    setDrilldown((cur) =>
+                      cur && cur.author === author && cur.status === "fail"
+                        ? null
+                        : { author, status: "fail" },
+                    );
+                  }}
                 />
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Click a Pass or Fail segment to see the PRs.
+          </p>
         </div>
 
         {/* Radar Chart */}
@@ -203,7 +217,6 @@ export default function TeamPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <RadarChart data={[
                   { metric: "Pass Rate", ...Object.fromEntries(radarData.map((r) => [r.author, r["Pass Rate"]])) },
-                  { metric: "Coverage", ...Object.fromEntries(radarData.map((r) => [r.author, r.Coverage])) },
                   { metric: "PR Count", ...Object.fromEntries(radarData.map((r) => [r.author, r["PR Count"]])) },
                   { metric: "Bug-Free", ...Object.fromEntries(radarData.map((r) => [r.author, r["Bug-Free"]])) },
                   { metric: "Sec-Clean", ...Object.fromEntries(radarData.map((r) => [r.author, r["Sec-Clean"]])) },
@@ -244,6 +257,95 @@ export default function TeamPage() {
         )}
       </div>
 
+      {/* Drill-down panel: PRs filtered by clicked author + status */}
+      {drilldown && (
+        <div className="bg-card rounded-lg p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-4 flex-wrap mb-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold">
+                {drilldown.status === "pass" ? "Passed" : "Failed"} PRs
+              </h2>
+              <span className="text-sm text-muted-foreground">
+                by <span className="font-medium">{drilldown.author}</span>
+              </span>
+            </div>
+            <button
+              onClick={() => setDrilldown(null)}
+              className="text-xs px-2.5 py-1 rounded-full border border-border hover:bg-accent transition-colors"
+            >
+              Clear filter
+            </button>
+          </div>
+          {(() => {
+            const filtered = data.recent_scans.filter(
+              (s) => s.author === drilldown.author && s.status === drilldown.status,
+            );
+            if (filtered.length === 0) {
+              return (
+                <p className="text-sm text-muted-foreground">
+                  No {drilldown.status === "pass" ? "passed" : "failed"} PRs by{" "}
+                  {drilldown.author} in recent scans.
+                </p>
+              );
+            }
+            return (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="pb-2 font-medium">PR</th>
+                      <th className="pb-2 font-medium">Branch</th>
+                      <th className="pb-2 font-medium">Status</th>
+                      <th className="pb-2 font-medium">Grade</th>
+                      <th className="pb-2 font-medium text-right">Bugs</th>
+                      <th className="pb-2 font-medium text-right">Security</th>
+                      <th className="pb-2 font-medium">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((scan) => (
+                      <tr
+                        key={`${scan.pr_number}-${scan.commit_sha}`}
+                        className="border-b border-border/50 hover:bg-accent/50 transition-colors"
+                      >
+                        <td className="py-2">
+                          <Link
+                            to={`/pr/${scan.pr_number}`}
+                            className="text-primary hover:underline font-medium"
+                          >
+                            #{scan.pr_number}
+                          </Link>
+                        </td>
+                        <td className="py-2 font-mono text-xs">{scan.branch}</td>
+                        <td className="py-2">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getStatusColor(scan.status)}`}
+                          >
+                            {scan.status.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-2">
+                          <span
+                            className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white ${getGradeColor(scan.quality_grade)}`}
+                          >
+                            {scan.quality_grade}
+                          </span>
+                        </td>
+                        <td className="py-2 text-right">{scan.bugs}</td>
+                        <td className="py-2 text-right">{scan.security}</td>
+                        <td className="py-2 text-muted-foreground text-xs">
+                          {formatDate(scan.timestamp)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Contributor Table */}
       <div className="bg-card rounded-lg p-4 shadow-sm">
         <h2 className="text-lg font-semibold mb-4">Contributors</h2>
@@ -254,7 +356,6 @@ export default function TeamPage() {
                 <th className="pb-2 font-medium">Author</th>
                 <th className="pb-2 font-medium text-right">PRs</th>
                 <th className="pb-2 font-medium text-right">Pass Rate</th>
-                <th className="pb-2 font-medium text-right">Avg Coverage</th>
                 <th className="pb-2 font-medium text-right">Bugs</th>
                 <th className="pb-2 font-medium text-right">Security</th>
                 <th className="pb-2 font-medium text-right">Pass</th>
@@ -282,16 +383,49 @@ export default function TeamPage() {
                       {formatPercentage(c.pass_rate)}
                     </span>
                   </td>
-                  <td className="py-2 text-right">
-                    {formatPercentage(c.avg_coverage)}
-                  </td>
                   <td className="py-2 text-right">{c.total_bugs}</td>
                   <td className="py-2 text-right">{c.total_security}</td>
-                  <td className="py-2 text-right text-green-500">
-                    {c.pass_count}
+                  <td className="py-2 text-right">
+                    <button
+                      type="button"
+                      disabled={c.pass_count === 0}
+                      onClick={() =>
+                        setDrilldown((cur) =>
+                          cur && cur.author === c.author && cur.status === "pass"
+                            ? null
+                            : { author: c.author, status: "pass" },
+                        )
+                      }
+                      className="text-green-500 font-medium enabled:hover:underline enabled:cursor-pointer disabled:opacity-60 disabled:cursor-default"
+                      title={
+                        c.pass_count > 0
+                          ? "Click to view passed PRs by this author"
+                          : undefined
+                      }
+                    >
+                      {c.pass_count}
+                    </button>
                   </td>
-                  <td className="py-2 text-right text-red-500">
-                    {c.fail_count}
+                  <td className="py-2 text-right">
+                    <button
+                      type="button"
+                      disabled={c.fail_count === 0}
+                      onClick={() =>
+                        setDrilldown((cur) =>
+                          cur && cur.author === c.author && cur.status === "fail"
+                            ? null
+                            : { author: c.author, status: "fail" },
+                        )
+                      }
+                      className="text-red-500 font-medium enabled:hover:underline enabled:cursor-pointer disabled:opacity-60 disabled:cursor-default"
+                      title={
+                        c.fail_count > 0
+                          ? "Click to view failed PRs by this author"
+                          : undefined
+                      }
+                    >
+                      {c.fail_count}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -312,7 +446,6 @@ export default function TeamPage() {
                 <th className="pb-2 font-medium">Branch</th>
                 <th className="pb-2 font-medium">Status</th>
                 <th className="pb-2 font-medium">Grade</th>
-                <th className="pb-2 font-medium text-right">Coverage</th>
                 <th className="pb-2 font-medium text-right">Bugs</th>
                 <th className="pb-2 font-medium text-right">Security</th>
                 <th className="pb-2 font-medium">Date</th>
@@ -348,7 +481,6 @@ export default function TeamPage() {
                       {scan.quality_grade}
                     </span>
                   </td>
-                  <td className="py-2 text-right">{scan.coverage_pct}%</td>
                   <td className="py-2 text-right">{scan.bugs}</td>
                   <td className="py-2 text-right">{scan.security}</td>
                   <td className="py-2 text-muted-foreground text-xs">
@@ -371,8 +503,8 @@ function TeamSkeleton() {
         <div className="h-7 w-36 bg-muted rounded mb-2" />
         <div className="h-4 w-56 bg-muted rounded" />
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {Array.from({ length: 5 }).map((_, i) => (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
             className="bg-card rounded-lg p-4 shadow-sm border-b-4 border-muted"

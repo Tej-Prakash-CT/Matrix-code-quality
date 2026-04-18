@@ -76,7 +76,7 @@ jobs:
       - name: Install Tools
         run: |
           npm install -g jscpd
-          pip install bandit semgrep jupyter nbconvert pylint pytest coverage databricks-cli ruff sqlfluff
+          pip install bandit semgrep jupyter nbconvert databricks-cli ruff sqlfluff
 
       # ── Gitleaks ─────────────────────────────────────────────────────────
       # Scans only the COMMITS introduced by this PR (not the full working tree).
@@ -209,83 +209,6 @@ jobs:
           json.dump({'results': r}, open('bandit-report.json','w'))
           " || echo '{"results":[]}' > bandit-report.json
 
-      # ── Pylint — scan only PR-changed Python files ────────────────────────
-      # - name: Run pylint
-      #   id: pylint
-      #   continue-on-error: true
-      #   run: |
-      #     PY_COUNT=$(wc -l < pr-changed-py.txt | tr -d ' ')
-      #     if [ "${PY_COUNT}" -eq 0 ]; then
-      #       echo "No Python files changed in this PR — skipping pylint"
-      #       echo "[]" > pylint-py-report.json
-      #     else
-      #       # Scan only the files changed in this PR.
-      #       # xargs -a reads the file list from a file (correct syntax).
-      #       # xargs -r skips execution if the file list is empty.
-      #       xargs -a pr-changed-py.txt -r pylint \
-      #         --output-format=json \
-      #         --disable=E0401 \
-      #         > pylint-py-report.json || true
-      #     fi
-      #     python3 -c "import json; json.load(open('pylint-py-report.json'))" 2>/dev/null \
-      #       || echo "[]" > pylint-py-report.json
-      #     if [ -d .notebook_converted ] && [ "$(ls -A .notebook_converted)" ]; then
-      #       pylint .notebook_converted/ --output-format=json --recursive=yes \
-      #         --disable=C,R,E0001,E0401 \
-      #         > pylint-nb-report.json || true
-      #       # E0001: pylint parser false positives on Japanese/Unicode chars in comments
-      #       # E0401: import errors expected — pyspark/project utilities not in CI env
-      #     else
-      #       echo "[]" > pylint-nb-report.json
-      #     fi
-      #     python3 -c "
-      #     import json
-      #     r = json.load(open('pylint-py-report.json')) + json.load(open('pylint-nb-report.json'))
-      #     json.dump(r, open('pylint-report.json','w'))
-      #     " || echo "[]" > pylint-report.json
-# ── Pylint — scan only PR-changed Python files ────────────────────────
-      - name: Run pylint
-        id: pylint
-        continue-on-error: true
-        run: |
-          PY_COUNT=$(wc -l < pr-changed-py.txt | tr -d ' ')
-          if [ "${PY_COUNT}" -eq 0 ]; then
-            echo "No Python files changed in this PR — skipping pylint"
-            echo "[]" > pylint-py-report.json
-          else
-            # Scan only the files changed in this PR using .pylintrc config
-            xargs -a pr-changed-py.txt -r pylint \
-              --rcfile=.pylintrc \
-              --output-format=json \
-              > pylint-py-report.json || true
-          fi
-          python3 -c "import json; json.load(open('pylint-py-report.json'))" 2>/dev/null \
-            || echo "[]" > pylint-py-report.json
-          
-          # Scan converted notebooks
-          if [ -d .notebook_converted ] && [ "$(ls -A .notebook_converted)" ]; then
-            pylint .notebook_converted/ \
-              --rcfile=.pylintrc \
-              --output-format=json \
-              --recursive=yes \
-              > pylint-nb-report.json || true
-          else
-            echo "[]" > pylint-nb-report.json
-          fi
-          
-          # Merge Python and notebook reports
-          python3 -c "
-          import json
-          r = json.load(open('pylint-py-report.json')) + json.load(open('pylint-nb-report.json'))
-          json.dump(r, open('pylint-report.json','w'))
-          " || echo "[]" > pylint-report.json
-      # ── Pytest (skipped until tests are added) ────────────────────────────
-      - name: Run Pytest
-        run: |
-          echo "Skipping Pytest — no tests added yet"
-          echo '{"summary":{"passed":0,"failed":0,"total":0},"tests":[]}' > pytest-report.json
-          echo '{"totals":{"percent_covered":0},"files":{}}' > coverage.json
-
       # ── Ruff — scan only PR-changed Python files ──────────────────────────
       - name: Run Ruff
         id: ruff
@@ -316,10 +239,10 @@ jobs:
           cat << 'PYEOF' > aggregate_reports.py
           #!/usr/bin/env python3
           """
-          aggregate_reports.py  (v1.2 — adds pylint + notebook source tagging)
+          aggregate_reports.py  (v1.4 — Pytest & Coverage removed)
           ----------------------------------------------------------------------
-          Aggregates Gitleaks, jscpd, Semgrep, Bandit, pytest, coverage.py,
-          and Pylint JSON reports into a single unified quality report.
+          Aggregates Gitleaks, jscpd, Semgrep, Bandit, Ruff and SQLFluff JSON
+          reports into a single unified quality report.
           """
           
           import argparse
@@ -461,112 +384,6 @@ jobs:
               }
           
           
-          def parse_coverage(raw: dict, threshold: int = 80) -> dict:
-              totals    = raw.get("totals", {})
-              total_pct = round(float(totals.get("percent_covered", 0)), 2)
-              files = []
-              for filepath, data in raw.get("files", {}).items():
-                  summary = data.get("summary", {})
-                  files.append({
-                      "file":         filepath,
-                      "statements":   summary.get("num_statements", 0),
-                      "covered":      summary.get("covered_lines",  0),
-                      "missing":      summary.get("missing_lines",  0),
-                      "coverage_pct": round(float(summary.get("percent_covered", 0)), 1),
-                      "missing_lines":data.get("missing_lines", []),
-                  })
-              files.sort(key=lambda f: f["coverage_pct"])
-              return {
-                  "total_pct":       total_pct,
-                  "threshold":       threshold,
-                  "covered_lines":   int(totals.get("covered_lines",  0)),
-                  "total_lines":     int(totals.get("num_statements", 0)),
-                  "missing_lines":   int(totals.get("missing_lines",  0)),
-                  "files":           files,
-                  "files_count":     len(files),
-                  "below_threshold": [f for f in files if f["coverage_pct"] < threshold],
-              }
-          
-          
-          def parse_pytest(raw: dict) -> dict:
-              summary  = raw.get("summary", {})
-              tests    = raw.get("tests",   [])
-              failures = []
-              for t in tests:
-                  if t.get("outcome") in ("failed", "error"):
-                      call = t.get("call", {})
-                      failures.append({
-                          "nodeid":   t.get("nodeid", ""),
-                          "outcome":  t.get("outcome", ""),
-                          "duration": round(t.get("duration", 0), 3),
-                          "message":  (call.get("longrepr") or "")[:400],
-                      })
-              return {
-                  "passed":   summary.get("passed",  0),
-                  "failed":   summary.get("failed",  0),
-                  "error":    summary.get("error",   0),
-                  "skipped":  summary.get("skipped", 0),
-                  "total":    summary.get("total",   0),
-                  "duration": round(raw.get("duration", 0), 2),
-                  "failures": failures,
-              }
-          
-          
-          # ── NEW: Pylint parser ─────────────────────────────────────────────────────
-          
-          def parse_pylint(raw) -> dict:
-              """
-              Parse merged pylint JSON report (list of finding dicts).
-              Each finding has: type, message-id, symbol, message, path, module, line, column.
-              Notebook findings have an additional _source="notebook" key.
-          
-              Pylint message types:
-                C = convention     (style, minor quality)
-                R = refactor       (design suggestion)
-                W = warning        (potential bug)
-                E = error          (likely bug / wrong code)
-                F = fatal          (prevents pylint from running further)
-              """
-              if not isinstance(raw, list):
-                  raw = []
-          
-              findings = []
-              type_counts: dict[str, int] = {}
-          
-              for item in raw:
-                  msg_type = item.get("type", "").lower()
-                  type_counts[msg_type] = type_counts.get(msg_type, 0) + 1
-                  findings.append({
-                      "type":       msg_type,
-                      "message_id": item.get("message-id", ""),
-                      "symbol":     item.get("symbol",     ""),
-                      "message":    item.get("message",    ""),
-                      "path":       item.get("path",       ""),
-                      "module":     item.get("module",     ""),
-                      "line":       item.get("line",       0),
-                      "column":     item.get("column",     0),
-                      "source":     item.get("_source",    "python"),
-                  })
-          
-              errors        = type_counts.get("error",      0) + type_counts.get("fatal", 0)
-              warnings      = type_counts.get("warning",    0)
-              conventions   = type_counts.get("convention", 0)
-              refactors     = type_counts.get("refactor",   0)
-              nb_count      = sum(1 for f in findings if f["source"] == "notebook")
-              py_count      = len(findings) - nb_count
-          
-              return {
-                  "count":       len(findings),
-                  "errors":      errors,
-                  "warnings":    warnings,
-                  "conventions": conventions,
-                  "refactors":   refactors,
-                  "type_counts": type_counts,
-                  "py_count":    py_count,
-                  "nb_count":    nb_count,
-                  "findings":    findings,
-              }
-          
           def parse_ruff(raw):
               if not isinstance(raw, list): raw = []
               findings = []
@@ -620,33 +437,22 @@ jobs:
           
           # ── Status logic ───────────────────────────────────────────────────────────
           
-          def determine_status(gl, jd, sg, bd, cov, pt, pl, rf, sf, cov_threshold: int) -> str:
+          def determine_status(gl, jd, sg, bd, rf, sf) -> str:
               """
               Fail the PR if ANY hard threshold is breached.
-          
+
               Thresholds:
                 secrets        : any found             (zero tolerance)
                 duplication    : > 30 %
                 semgrep        : any ERROR-level
                 bandit         : any HIGH severity
-                pytest         : any test failure
-                coverage       : < cov_threshold %  BUT skipped when tests_total == 0
-                                 (no tests added yet is not a blocker — coverage is N/A)
-                pylint         : any ERROR or FATAL
-                ruff           : any ERROR
+                ruff           : any ERROR (includes ported Pylint PL rules)
                 sqlfluff       : any ERROR
               """
               if gl["count"] > 0:                  return "fail"
               if jd["percentage"] > 30:            return "fail"
               if sg.get("errors_count", 0) > 0:    return "fail"
               if bd.get("high", 0) > 0:            return "fail"
-              if pt.get("failed", 0) > 0:          return "fail"
-              # Coverage is only a blocker when tests actually exist.
-              # If tests_total == 0, coverage is meaningless (no tests ran) and
-              # must NOT block the PR — it will show as 'N/A' in the dashboard.
-              if pt.get("total", 0) > 0 and cov["total_pct"] < cov_threshold:
-                  return "fail"
-              if pl.get("errors", 0) > 0:          return "fail"
               if rf.get("errors", 0) > 0:          return "fail"
               if sf.get("errors", 0) > 0:          return "fail"
               return "pass"
@@ -667,12 +473,8 @@ jobs:
               p.add_argument("--jscpd",         required=True)
               p.add_argument("--semgrep",       required=True)
               p.add_argument("--bandit",        required=True)
-              p.add_argument("--coverage",      required=True)
-              p.add_argument("--pytest",        required=True)
-              p.add_argument("--pylint",        required=True, help="Merged pylint JSON (py + notebooks)")
               p.add_argument("--ruff",          default="")
               p.add_argument("--sqlfluff",      default="")
-              p.add_argument("--cov-threshold", type=int, default=80)
               p.add_argument("--output",        required=True)
               args = p.parse_args()
           
@@ -680,13 +482,10 @@ jobs:
               jd  = parse_jscpd(   load_json(args.jscpd,    {}))
               sg  = parse_semgrep( load_json(args.semgrep,   {}))
               bd  = parse_bandit(  load_json(args.bandit,    {}))
-              cov = parse_coverage(load_json(args.coverage,  {}), args.cov_threshold)
-              pt  = parse_pytest(  load_json(args.pytest,    {}))
-              pl  = parse_pylint(  load_json(args.pylint,    []))
               rf  = parse_ruff(    load_json(args.ruff,      []))
               sf  = parse_sqlfluff(load_json(args.sqlfluff,  []))
-          
-              status = determine_status(gl, jd, sg, bd, cov, pt, pl, rf, sf, args.cov_threshold)
+
+              status = determine_status(gl, jd, sg, bd, rf, sf)
           
               report = {
                   "schema_version": "1.3",
@@ -707,30 +506,18 @@ jobs:
                       "bugs_warning":         sg.get("warning_count", 0),
                       "security":             bd["count"],
                       "security_high":        bd["high"],
-                      "coverage_pct":         cov["total_pct"],
-                      "coverage_threshold":   args.cov_threshold,
-                      "tests_passed":         pt["passed"],
-                      "tests_failed":         pt["failed"],
-                      "tests_total":          pt["total"],
-                      "pylint_total":         pl["count"],
-                      "pylint_errors":        pl["errors"],
-                      "pylint_warnings":      pl["warnings"],
-                      "pylint_nb_count":      pl["nb_count"],
                       "ruff_errors":          rf["errors"],
                       "ruff_warnings":        rf["warnings"],
                       "sqlfluff_errors":      sf["errors"],
                       "total_issues": (
                           gl["count"] + jd["clones"] + sg["count"] +
-                          bd["count"] + pt["failed"] + pl["errors"] + rf["errors"] + sf["errors"]
+                          bd["count"] + rf["errors"] + sf["errors"]
                       ),
                   },
                   "gitleaks": gl,
                   "jscpd":    jd,
                   "semgrep":  sg,
                   "bandit":   bd,
-                  "coverage": cov,
-                  "pytest":   pt,
-                  "pylint":   pl,
                   "ruff":     rf,
                   "sqlfluff": sf,
               }
@@ -738,9 +525,9 @@ jobs:
               Path(args.output).write_text(json.dumps(report, indent=2))
               print(
                   f"[OK] Report → {args.output}  |  status={status}  |  "
-                  f"pylint={pl['count']} ({pl['errors']} errors, {pl['nb_count']} from notebooks)  |  "
-                  f"coverage={cov['total_pct']}%  |  "
-                  f"tests={pt['passed']}✓ {pt['failed']}✗"
+                  f"ruff={rf['count']} ({rf['errors']} errors)  |  "
+                  f"semgrep={sg['count']}  |  bandit={bd['count']}  |  "
+                  f"secrets={gl['count']}"
               )
           
           
@@ -763,12 +550,8 @@ jobs:
             --jscpd         jscpd-report/jscpd-report.json \
             --semgrep       semgrep-report.json \
             --bandit        bandit-report.json \
-            --coverage      coverage.json \
-            --pytest        pytest-report.json \
-            --pylint        pylint-report.json \
             --ruff          ruff-report.json \
             --sqlfluff      sqlfluff-report.json \
-            --cov-threshold 80 \
             --output        combined-report.json
 
       # ── Upload to Databricks Volume ────────────────────────────────────────
@@ -798,10 +581,6 @@ jobs:
           report = json.load(open('combined-report.json'))
           s      = report.get('summary', {})
 
-          cov_pct   = s.get('coverage_pct', 0)
-          tests_tot = s.get('tests_total',  0)
-          cov_label = f\"{cov_pct}%\" if tests_tot > 0 else \"N/A (no tests)\"
-
           print(f\"  PR          : #{report.get('pr_number','?')}  |  {report.get('pr_title','')}\")
           print(f\"  Author      : {report.get('pr_author','?')}\")
           print(f\"  Branch      : {report.get('branch','?')}\")
@@ -817,13 +596,6 @@ jobs:
           print(f\"  │  Semgrep warnings          {s.get('bugs_warning',0):<12}(informational) │\")
           print(f\"  │  Bandit HIGH severity       {s.get('security_high',0):<12}0            │\")
           print(f\"  │  Bandit issues (total)     {s.get('security',0):<12}(informational) │\")
-          print(f\"  │  Tests passed              {s.get('tests_passed',0):<12}             │\")
-          print(f\"  │  Tests failed              {s.get('tests_failed',0):<12}0            │\")
-          print(f\"  │  Tests total               {tests_tot:<12}             │\")
-          print(f\"  │  Coverage                  {cov_label:<12}≥ {s.get('coverage_threshold',80)}% (if tests)│\")
-          print(f\"  │  Pylint errors             {s.get('pylint_errors',0):<12}0            │\")
-          print(f\"  │  Pylint warnings           {s.get('pylint_warnings',0):<12}(informational) │\")
-          print(f\"  │  Pylint notebook issues    {s.get('pylint_nb_count',0):<12}(informational) │\")
           print(f\"  │  Ruff errors               {s.get('ruff_errors',0):<12}0            │\")
           print(f\"  │  Ruff warnings             {s.get('ruff_warnings',0):<12}(informational) │\")
           print(f\"  │  SQLFluff errors           {s.get('sqlfluff_errors',0):<12}0            │\")
@@ -852,14 +624,6 @@ jobs:
                   reasons.append(f\"Semgrep errors: {s['bugs_error']} found\")
               if s.get('security_high', 0) > 0:
                   reasons.append(f\"Bandit HIGH severity: {s['security_high']} found\")
-              if s.get('tests_failed', 0) > 0:
-                  reasons.append(f\"Test failures: {s['tests_failed']} failed\")
-              # Coverage is only a blocker when tests exist.
-              # When tests_total == 0, skip this check — coverage is N/A.
-              if s.get('tests_total', 0) > 0 and s.get('coverage_pct', 0) < s.get('coverage_threshold', 0):
-                  reasons.append(f\"Coverage too low: {s['coverage_pct']}% (threshold: {s['coverage_threshold']}%)\")
-              if s.get('pylint_errors', 0) > 0:
-                  reasons.append(f\"Pylint errors: {s['pylint_errors']} found\")
               if s.get('ruff_errors', 0) > 0:
                   reasons.append(f\"Ruff errors: {s['ruff_errors']} found\")
               if s.get('sqlfluff_errors', 0) > 0:

@@ -275,14 +275,12 @@ def _evaluate_scan_status(report: dict, cfg: AdminConfig) -> ScanStatus:
         if "high" in sf.fail_on and report.get("gitleaks", {}).get("count", 0) > 0:
             return ScanStatus.FAIL
 
-    # ── pylint / ruff / sqlfluff: hotspots ──────────────────────────────────
+    # ── pylint / ruff: hotspots ────────────────────────────────────────────
     hotspot_count = 0
     if _tool_enabled("pylint", cfg):
         hotspot_count += s.get("pylint_errors", 0)
     if _tool_enabled("ruff", cfg):
         hotspot_count += s.get("ruff_errors", 0)
-    if _tool_enabled("sqlfluff", cfg):
-        hotspot_count += s.get("sqlfluff_errors", 0)
     if hotspot_count > thr.hotspots_danger:
         return ScanStatus.FAIL
 
@@ -363,14 +361,12 @@ def build_kpi_cards(report: dict, prev_report: dict | None, all_reports: list[di
     vkloc_good = (vkloc or 0) <= thr.vulns_per_kloc_warning
     vkloc_danger = (vkloc or 0) > thr.vulns_per_kloc_danger
 
-    # ── Hotspots (pylint + ruff + sqlfluff, respect toggles) ─────────────────
+    # ── Hotspots (pylint + ruff, respect toggles) ─────────────────────────────
     hotspots = 0
     if _tool_enabled("pylint", cfg):
         hotspots += s.get("pylint_errors", 0)
     if _tool_enabled("ruff", cfg):
         hotspots += s.get("ruff_errors", 0)
-    if _tool_enabled("sqlfluff", cfg):
-        hotspots += s.get("sqlfluff_errors", 0)
     hs_good = hotspots <= thr.hotspots_warning
     hs_danger = hotspots > thr.hotspots_danger
 
@@ -389,8 +385,6 @@ def build_kpi_cards(report: dict, prev_report: dict | None, all_reports: list[di
         prev_hotspots += prev_s.get("pylint_errors", 0)
     if _tool_enabled("ruff", cfg):
         prev_hotspots += prev_s.get("ruff_errors", 0)
-    if _tool_enabled("sqlfluff", cfg):
-        prev_hotspots += prev_s.get("sqlfluff_errors", 0)
 
     # Helper: returns empty sparkline when tool disabled, real data when enabled
     def _spark(enabled: bool, fn) -> list:
@@ -403,8 +397,6 @@ def build_kpi_cards(report: dict, prev_report: dict | None, all_reports: list[di
             total += d.get("summary", {}).get("pylint_errors", 0)
         if _tool_enabled("ruff", cfg):
             total += d.get("summary", {}).get("ruff_errors", 0)
-        if _tool_enabled("sqlfluff", cfg):
-            total += d.get("summary", {}).get("sqlfluff_errors", 0)
         return total
 
     cards = [
@@ -453,7 +445,7 @@ def build_kpi_cards(report: dict, prev_report: dict | None, all_reports: list[di
             value=str(hotspots),
             raw_value=float(hotspots),
             status=_kpi_status(hs_good, hs_danger),
-            tooltip=f"Errors from enabled linters (pylint/ruff/sqlfluff). Warn: {thr.hotspots_warning}, Fail: {thr.hotspots_danger}",
+            tooltip=f"Errors from enabled linters (pylint/ruff). Warn: {thr.hotspots_warning}, Fail: {thr.hotspots_danger}",
             delta=compute_delta(float(hotspots), prev_hotspots) if prev else None,
             # Always show hotspot sparkline, but only counting enabled tools
             sparkline=build_sparkline(all_reports, _hotspot_fn),
@@ -521,7 +513,7 @@ def build_scan_summary(entry: dict, report: dict, cfg: AdminConfig | None = None
         bugs=len(_filter_findings(report.get("semgrep", {}).get("findings", []), cfg)),
         security=len(_filter_findings(report.get("bandit", {}).get("findings", []), cfg)),
         secrets=report.get("gitleaks", {}).get("count", 0),
-        hotspots=pylint_errors + s.get("ruff_errors", 0) + s.get("sqlfluff_errors", 0),
+        hotspots=pylint_errors + s.get("ruff_errors", 0),
         duplication=report.get("jscpd", {}).get("percentage", 0),
         tests_total=report.get("pytest", {}).get("total", 0),
         quality_grade=compute_quality_grade(report, cfg),
@@ -656,7 +648,7 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
         bandit_findings=to_findings(report.get("bandit", {}).get("findings", []), "bandit"),
         pylint_findings=to_findings(pl.get("findings", []), "pylint"),
         ruff_findings=to_findings(report.get("ruff", {}).get("findings", []), "ruff"),
-        sqlfluff_findings=to_findings(report.get("sqlfluff", {}).get("findings", []), "sqlfluff"),
+        sqlfluff_findings=[],
         jscpd_duplicates=jscpd_dups,
         ai_review=report.get("ai_review"),
         duplication_pct=report.get("jscpd", {}).get("percentage", 0),
@@ -674,11 +666,6 @@ def build_trends(reports: list[dict], limit: int = 50) -> TrendsOut:
     cfg = load_config()
 
     # Tool-aware extractors: disabled tools always return 0.0 (flat line)
-    def _cov(d: dict) -> float:
-        if not (_tool_enabled("coverage", cfg) and _tool_enabled("pytest", cfg)):
-            return 0.0
-        return float(d.get("coverage", {}).get("total_pct", 0))
-
     def _bugs(d: dict) -> float:
         return float(d.get("semgrep", {}).get("count", 0)) if _tool_enabled("semgrep", cfg) else 0.0
 
@@ -694,26 +681,17 @@ def build_trends(reports: list[dict], limit: int = 50) -> TrendsOut:
     def _secrets(d: dict) -> float:
         return float(d.get("gitleaks", {}).get("count", 0)) if _tool_enabled("gitleaks", cfg) else 0.0
 
-    def _tests(d: dict) -> float:
-        return float(d.get("pytest", {}).get("total", 0)) if _tool_enabled("pytest", cfg) else 0.0
-
     def _hotspots(d: dict) -> float:
         total = 0.0
-        if _tool_enabled("pylint", cfg):
-            total += d.get("summary", {}).get("pylint_errors", 0)
         if _tool_enabled("ruff", cfg):
             total += d.get("summary", {}).get("ruff_errors", 0)
-        if _tool_enabled("sqlfluff", cfg):
-            total += d.get("summary", {}).get("sqlfluff_errors", 0)
         return total
 
     metric_extractors = {
-        "coverage":   ("Coverage %",                  _cov),
         "bugs":       ("Bugs",                        _bugs),
         "duplication":("Duplication %",               _dup),
         "security":   ("High-Severity Security Issues", _security),
         "secrets":    ("Secrets",                     _secrets),
-        "tests":      ("Tests",                       _tests),
         "hotspots":   ("Hotspots",                    _hotspots),
         "tech_debt":  ("Tech Debt %",                 lambda d: compute_technical_debt(d).ratio_pct),
     }
