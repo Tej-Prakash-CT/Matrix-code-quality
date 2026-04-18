@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type TeamHealthOut } from "@/lib/api";
+import { api, type ScanSummaryOut, type TeamHealthOut } from "@/lib/api";
 import {
   formatDate,
   formatPercentage,
@@ -24,13 +24,17 @@ import {
   Radar,
 } from "recharts";
 
-type Drilldown = { author: string; status: "pass" | "fail" } | null;
+type DrillStatus = "pass" | "fail" | "all";
+type Drilldown = { author: string; status: DrillStatus } | null;
 
 export default function TeamPage() {
   const [data, setData] = useState<TeamHealthOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drilldown, setDrilldown] = useState<Drilldown>(null);
+  const [drillScans, setDrillScans] = useState<ScanSummaryOut[]>([]);
+  const [drillLoading, setDrillLoading] = useState(false);
+  const [drillError, setDrillError] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -39,6 +43,38 @@ export default function TeamPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  // Fetch author-/status-filtered scans whenever the drill-down target changes.
+  // Uses /scans (up to 200) rather than the limited recent_scans window so the
+  // counts in the Contributors table always match what the panel shows.
+  useEffect(() => {
+    if (!drilldown) {
+      setDrillScans([]);
+      setDrillError(null);
+      return;
+    }
+    let cancelled = false;
+    setDrillLoading(true);
+    setDrillError(null);
+    api
+      .listScans({
+        author: drilldown.author,
+        status: drilldown.status === "all" ? undefined : drilldown.status,
+        limit: 200,
+      })
+      .then((scans) => {
+        if (!cancelled) setDrillScans(scans);
+      })
+      .catch((e) => {
+        if (!cancelled) setDrillError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setDrillLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [drilldown]);
 
   if (loading) return <TeamSkeleton />;
   if (error)
@@ -261,13 +297,39 @@ export default function TeamPage() {
       {drilldown && (
         <div className="bg-card rounded-lg p-4 shadow-sm">
           <div className="flex items-center justify-between gap-4 flex-wrap mb-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-semibold">
-                {drilldown.status === "pass" ? "Passed" : "Failed"} PRs
+                {drilldown.status === "pass"
+                  ? "Passed"
+                  : drilldown.status === "fail"
+                    ? "Failed"
+                    : "All"}{" "}
+                PRs
               </h2>
               <span className="text-sm text-muted-foreground">
                 by <span className="font-medium">{drilldown.author}</span>
               </span>
+              <div className="flex gap-1 ml-2">
+                {(["all", "pass", "fail"] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() =>
+                      setDrilldown({ author: drilldown.author, status: s })
+                    }
+                    className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                      drilldown.status === s
+                        ? s === "pass"
+                          ? "bg-green-500 text-white border-transparent"
+                          : s === "fail"
+                            ? "bg-red-500 text-white border-transparent"
+                            : "bg-primary text-primary-foreground border-transparent"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {s === "all" ? "All" : s === "pass" ? "Pass" : "Fail"}
+                  </button>
+                ))}
+              </div>
             </div>
             <button
               onClick={() => setDrilldown(null)}
@@ -277,19 +339,36 @@ export default function TeamPage() {
             </button>
           </div>
           {(() => {
-            const filtered = data.recent_scans.filter(
-              (s) => s.author === drilldown.author && s.status === drilldown.status,
-            );
-            if (filtered.length === 0) {
+            if (drillLoading) {
+              return (
+                <p className="text-sm text-muted-foreground">Loading PRs…</p>
+              );
+            }
+            if (drillError) {
+              return (
+                <p className="text-sm text-destructive">
+                  Failed to load PRs: {drillError}
+                </p>
+              );
+            }
+            if (drillScans.length === 0) {
               return (
                 <p className="text-sm text-muted-foreground">
-                  No {drilldown.status === "pass" ? "passed" : "failed"} PRs by{" "}
-                  {drilldown.author} in recent scans.
+                  No{" "}
+                  {drilldown.status === "pass"
+                    ? "passed"
+                    : drilldown.status === "fail"
+                      ? "failed"
+                      : ""}{" "}
+                  PRs by {drilldown.author}.
                 </p>
               );
             }
             return (
               <div className="overflow-x-auto">
+                <p className="text-xs text-muted-foreground mb-2">
+                  Showing {drillScans.length} PR{drillScans.length === 1 ? "" : "s"}
+                </p>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-muted-foreground">
@@ -303,7 +382,7 @@ export default function TeamPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((scan) => (
+                    {drillScans.map((scan) => (
                       <tr
                         key={`${scan.pr_number}-${scan.commit_sha}`}
                         className="border-b border-border/50 hover:bg-accent/50 transition-colors"

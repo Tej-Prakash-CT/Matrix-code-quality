@@ -2,6 +2,7 @@ name: Code Quality Template
 
 on:
   workflow_call:
+  
 
 jobs:
   quality_scan:

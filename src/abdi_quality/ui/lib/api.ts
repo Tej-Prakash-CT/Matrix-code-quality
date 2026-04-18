@@ -312,7 +312,13 @@ export interface AdminConfig {
 // API fetch functions
 export const api = {
   getOverview: () => fetchApi<OverviewOut>("/overview"),
-  listScans: () => fetchApi<ScanSummaryOut[]>("/scans?limit=200"),
+  listScans: (opts?: { author?: string; status?: "pass" | "fail"; limit?: number }) => {
+    const params = new URLSearchParams();
+    params.set("limit", String(opts?.limit ?? 200));
+    if (opts?.author) params.set("author", opts.author);
+    if (opts?.status) params.set("status", opts.status);
+    return fetchApi<ScanSummaryOut[]>(`/scans?${params.toString()}`);
+  },
   getScan: (prNumber: string) => fetchApi<ScanDetailOut>(`/scans/${prNumber}`),
   getTrends: (limit = 50) => fetchApi<TrendsOut>(`/trends?limit=${limit}`),
   getTeamHealth: () => fetchApi<TeamHealthOut>("/team"),
