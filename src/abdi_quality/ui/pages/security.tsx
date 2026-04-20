@@ -70,10 +70,9 @@ export default function SecurityPage() {
       cat.findings.map((f) => ({ ...f, owasp_category: cat.category_id }))
     );
 
-  const filteredFindings =
-    findingsFilter === "all"
-      ? allFindings
-      : allFindings.filter((f) => f.severity.toLowerCase() === findingsFilter);
+  const filteredFindings = allFindings.filter(
+    (f) => f.severity.toLowerCase() === findingsFilter,
+  );
 
   const kpiCards = [
     {
