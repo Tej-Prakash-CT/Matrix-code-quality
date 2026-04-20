@@ -34,14 +34,14 @@
     "bugs_per_kloc_danger": 5.0,
     "vulns_per_kloc_warning": 0.0,
     "vulns_per_kloc_danger": 3.0,
-    "hotspots_warning": 5,
-    "hotspots_danger": 10,
+    "hotspots_warning": 0,
+    "hotspots_danger": 0,
     "tech_debt_ratio_warning_pct": 10.0,
     "tech_debt_ratio_danger_pct": 50.0
   },
   "grade_weights": {
-    "reliability": 0.30,
-    "security": 0.30,
+    "reliability": 0.3,
+    "security": 0.3,
     "maintainability": 0.25,
     "coverage": 0.0,
     "duplication": 0.15,
@@ -49,7 +49,8 @@
   },
   "severity_filter": {
     "min_severity": [
-      "high"
+      "high",
+      "medium"
     ],
     "fail_on": [
       "high",

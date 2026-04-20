@@ -244,6 +244,54 @@ jobs:
             || echo "[]" > ruff-report.json
           echo "Ruff findings: $(python3 -c "import json; print(len(json.load(open('ruff-report.json'))))")"
 
+          # ── Print full Ruff findings in the pipeline log ──────────────────
+          # Surfaces every Ruff issue (file:line  code  message) directly in
+          # the GitHub Actions log so reviewers can see exactly which rules
+          # tripped without downloading the JSON artifact.
+          echo ""
+          echo "============================================================"
+          echo "  🧹  RUFF — DETAILED FINDINGS"
+          echo "============================================================"
+          python3 <<'PYEOF'
+          import json
+          from collections import Counter
+
+          try:
+              data = json.load(open('ruff-report.json'))
+          except Exception as e:
+              print(f"[WARN] Could not read ruff-report.json: {e}")
+              data = []
+
+          if not data:
+              print("  ✅ No Ruff issues found.")
+          else:
+              print(f"  Total issues: {len(data)}")
+              print("  ------------------------------------------------------------")
+              # Per-finding listing
+              for r in data:
+                  code = r.get("code") or "?"
+                  msg  = r.get("message", "")
+                  fn   = r.get("filename", "")
+                  loc  = r.get("location") or {}
+                  row  = loc.get("row", 0)
+                  col  = loc.get("column", 0)
+                  print(f"  {fn}:{row}:{col}  [{code}]  {msg}")
+
+              # Grouped summary by rule code
+              print("  ------------------------------------------------------------")
+              print("  Summary by rule:")
+              counts = Counter((r.get("code") or "?") for r in data)
+              for code, n in counts.most_common():
+                  print(f"    {code:<8} {n}")
+
+              # Grouped summary by file
+              print("  Summary by file:")
+              file_counts = Counter((r.get("filename") or "?") for r in data)
+              for fn, n in file_counts.most_common():
+                  print(f"    {n:>4}  {fn}")
+          PYEOF
+          echo "============================================================"
+
       # ── Aggregate ─────────────────────────────────────────────────────────
       - name: Generate Aggregator Script
         run: |
@@ -258,9 +306,35 @@ jobs:
           
           import argparse
           import json
+          import os
           import sys
           from datetime import datetime, timezone
           from pathlib import Path
+
+
+          # ── Path helpers ───────────────────────────────────────────────────────────
+
+          def _rel_path(fn: str) -> str:
+              """
+              Convert tool-reported paths to repo-relative so the Databricks
+              dashboard / PR detail page shows "lakehouse_framework/test/foo.py"
+              instead of the self-hosted runner's absolute path
+              (e.g. /home/ubuntu/actions-runner/_work/.../lakehouse_framework/...).
+
+              Tries GITHUB_WORKSPACE first (exact prefix match), then falls back to
+              os.path.relpath from CWD. Returns the original string on any failure.
+              """
+              if not fn:
+                  return fn
+              workspace = os.environ.get("GITHUB_WORKSPACE", "").rstrip("/")
+              if workspace and fn.startswith(workspace + "/"):
+                  return fn[len(workspace) + 1:]
+              if os.path.isabs(fn):
+                  try:
+                      return os.path.relpath(fn, os.getcwd())
+                  except ValueError:
+                      return fn
+              return fn
           
           
           # ── Loaders ────────────────────────────────────────────────────────────────
@@ -343,13 +417,15 @@ jobs:
           
           
           def parse_semgrep(raw) -> dict:
+              # Only keep ERROR-level findings; warnings/info are excluded from
+              # the report so the Databricks dashboard stays clean.
               results  = raw.get("results", [])
               findings = []
-              severity_counts: dict[str, int] = {}
               for r in results:
                   extra = r.get("extra", {})
                   sev   = extra.get("severity", "INFO").upper()
-                  severity_counts[sev] = severity_counts.get(sev, 0) + 1
+                  if sev != "ERROR":
+                      continue
                   findings.append({
                       "rule_id":  r.get("check_id", ""),
                       "file":     r.get("path", ""),
@@ -358,70 +434,63 @@ jobs:
                       "severity": sev,
                   })
               return {
-                  "count":           len(findings),
-                  "severity_counts": severity_counts,
-                  "errors_count":    severity_counts.get("ERROR",   0),
-                  "warning_count":   severity_counts.get("WARNING", 0),
-                  "info_count":      severity_counts.get("INFO",    0),
-                  "findings":        findings,
+                  "count":        len(findings),
+                  "errors_count": len(findings),
+                  "findings":     findings,
               }
           
           
           def parse_bandit(raw) -> dict:
+              # Only keep HIGH severity findings; medium/low are treated as
+              # warnings and excluded from the report.
               results  = raw.get("results", [])
               findings = []
               for r in results:
+                  sev = r.get("issue_severity", "LOW").upper()
+                  if sev != "HIGH":
+                      continue
                   findings.append({
                       "test_id":    r.get("test_id",        ""),
                       "test_name":  r.get("test_name",      ""),
                       "file":       r.get("filename",       ""),
                       "line":       r.get("line_number",    0),
-                      "severity":   r.get("issue_severity", "LOW").upper(),
+                      "severity":   sev,
                       "confidence": r.get("issue_confidence","LOW").upper(),
                       "message":    r.get("issue_text",     ""),
                       "source":     r.get("_source",        "python"),
                   })
-              high   = sum(1 for f in findings if f["severity"] == "HIGH")
-              medium = sum(1 for f in findings if f["severity"] == "MEDIUM")
-              low    = sum(1 for f in findings if f["severity"] == "LOW")
               nb_count = sum(1 for f in findings if f["source"] == "notebook")
               return {
-                  "count":    len(findings),
-                  "high":     high,
-                  "medium":   medium,
-                  "low":      low,
+                  "count":          len(findings),
+                  "high":           len(findings),
                   "notebook_count": nb_count,
-                  "findings": findings,
+                  "findings":       findings,
               }
           
           
           def parse_ruff(raw):
+              # Only keep error-level rules (E/F/B prefixes); other rules are
+              # treated as warnings and excluded from the report so the
+              # Databricks dashboard only reflects real failures.
               if not isinstance(raw, list): raw = []
               findings = []
-              errors, warnings = 0, 0
               for r in raw:
-                  code = r.get("code", "")
+                  code = r.get("code") or ""
                   is_error = code.startswith("E") or code.startswith("F") or code.startswith("B")
-                  if is_error:
-                      errors += 1
-                      sev = "ERROR"
-                  else:
-                      warnings += 1
-                      sev = "WARNING"
-          
+                  if not is_error:
+                      continue
                   findings.append({
-                      "rule_id":   code,
-                      "file":      r.get("filename", ""),
-                      "line":      r.get("location", {}).get("row", 0),
-                      "message":   r.get("message", ""),
-                      "severity":  sev
+                      "rule_id":  code,
+                      "file":     _rel_path(r.get("filename", "")),
+                      "line":     r.get("location", {}).get("row", 0),
+                      "message":  r.get("message", ""),
+                      "severity": "ERROR",
                   })
-          
+
               return {
-                  "count": len(findings),
+                  "count":    len(findings),
+                  "errors":   len(findings),
                   "findings": findings,
-                  "errors": errors,
-                  "warnings": warnings
               }
           
           # ── Status logic ───────────────────────────────────────────────────────────
@@ -483,19 +552,21 @@ jobs:
                   "repo":           args.repo,
                   "timestamp":      datetime.now(timezone.utc).isoformat(),
                   "summary": {
-                      "status":               status,
-                      "secrets":              gl["count"],
-                      "duplication":          jd["percentage"],
-                      "bugs":                 sg["count"],
-                      "bugs_error":           sg.get("errors_count", 0),
-                      "bugs_warning":         sg.get("warning_count", 0),
-                      "security":             bd["count"],
-                      "security_high":        bd["high"],
-                      "ruff_errors":          rf["errors"],
-                      "ruff_warnings":        rf["warnings"],
+                      "status":        status,
+                      "secrets":       gl["count"],
+                      "duplication":   jd["percentage"],
+                      "bugs":          sg["count"],
+                      "bugs_error":    sg.get("errors_count", 0),
+                      "security":      bd["count"],
+                      "security_high": bd["high"],
+                      "ruff_errors":   rf["errors"],
+                      # total_issues counts ONLY actual errors (no warnings).
+                      # If ruff reports 1 error and nothing else fails, this is 1.
                       "total_issues": (
-                          gl["count"] + jd["clones"] + sg["count"] +
-                          bd["count"] + rf["errors"]
+                          gl["count"] +
+                          sg.get("errors_count", 0) +
+                          bd["high"] +
+                          rf["errors"]
                       ),
                   },
                   "gitleaks": gl,
@@ -575,11 +646,9 @@ jobs:
           print(f\"  │  Secrets (Gitleaks)        {s.get('secrets',0):<12}0            │\")
           print(f\"  │  Code Duplication (jscpd)  {str(s.get('duplication',0))+'%':<12}≤ 30%        │\")
           print(f\"  │  Semgrep errors            {s.get('bugs_error',0):<12}0            │\")
-          print(f\"  │  Semgrep warnings          {s.get('bugs_warning',0):<12}(informational) │\")
-          print(f\"  │  Bandit HIGH severity       {s.get('security_high',0):<12}0            │\")
-          print(f\"  │  Bandit issues (total)     {s.get('security',0):<12}(informational) │\")
+          print(f\"  │  Bandit HIGH severity      {s.get('security_high',0):<12}0            │\")
           print(f\"  │  Ruff errors               {s.get('ruff_errors',0):<12}0            │\")
-          print(f\"  │  Ruff warnings             {s.get('ruff_warnings',0):<12}(informational) │\")
+          print(f\"  │  TOTAL ERRORS              {s.get('total_issues',0):<12}0            │\")
           print(f\"  └─────────────────────────────────────────────────────┘\")
           print()
           print(f\"  Overall Status : {s.get('status','?').upper()}\")

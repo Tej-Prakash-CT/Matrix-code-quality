@@ -275,13 +275,12 @@ def _evaluate_scan_status(report: dict, cfg: AdminConfig) -> ScanStatus:
         if "high" in sf.fail_on and report.get("gitleaks", {}).get("count", 0) > 0:
             return ScanStatus.FAIL
 
-    # ── pylint / ruff: hotspots ────────────────────────────────────────────
-    hotspot_count = 0
-    if _tool_enabled("pylint", cfg):
-        hotspot_count += s.get("pylint_errors", 0)
-    if _tool_enabled("ruff", cfg):
-        hotspot_count += s.get("ruff_errors", 0)
-    if hotspot_count > thr.hotspots_danger:
+    # ── ruff: any error fails (mirrors the CI Quality Gate exactly) ────────
+    # The CI pipeline blocks a PR on ruff_errors > 0, so the dashboard must
+    # report the same verdict. A separate hotspots threshold would let PRs
+    # that failed CI show up as PASS here, which is the mismatch we hit on
+    # PR #176 (1 Ruff error → CI fail, dashboard pass).
+    if _tool_enabled("ruff", cfg) and s.get("ruff_errors", 0) > 0:
         return ScanStatus.FAIL
 
     # ── tech debt ────────────────────────────────────────────────────────────

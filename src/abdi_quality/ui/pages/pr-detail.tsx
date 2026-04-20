@@ -301,14 +301,14 @@ function FindingsTable({
                   </span>
                 </button>
                 {isOpen && (
-                  <div className="px-3 pb-2">
+                  <div className="px-3 pb-2 max-h-80 overflow-y-auto">
                     <table className="w-full text-sm">
-                      <thead>
+                      <thead className="sticky top-0 z-10 bg-background">
                         <tr className="border-b border-border text-left text-muted-foreground">
-                          <th className="pb-1.5 font-medium text-xs">Rule</th>
-                          <th className="pb-1.5 font-medium text-xs">Severity</th>
-                          <th className="pb-1.5 font-medium text-xs text-right">Line</th>
-                          <th className="pb-1.5 font-medium text-xs">Message</th>
+                          <th className="pb-1.5 pt-1.5 font-medium text-xs">Rule</th>
+                          <th className="pb-1.5 pt-1.5 font-medium text-xs">Severity</th>
+                          <th className="pb-1.5 pt-1.5 font-medium text-xs text-right">Line</th>
+                          <th className="pb-1.5 pt-1.5 font-medium text-xs">Message</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -317,7 +317,7 @@ function FindingsTable({
                           .map((f, i) => (
                             <tr
                               key={`${f.rule_id}-${f.line}-${i}`}
-                              className="border-b border-border/30"
+                              className="border-b border-border/30 align-top"
                             >
                               <td className="py-1 text-xs">
                                 <span className="font-medium">
@@ -339,7 +339,7 @@ function FindingsTable({
                               <td className="py-1 text-right font-mono text-xs">
                                 {f.line}
                               </td>
-                              <td className="py-1 text-xs max-w-[300px] truncate">
+                              <td className="py-1 text-xs whitespace-normal break-words">
                                 {f.message}
                               </td>
                             </tr>
@@ -358,44 +358,49 @@ function FindingsTable({
           )}
         </div>
       ) : (
-        /* Flat table view (original) */
-        <div className="overflow-x-auto">
+        /* Flat table view — wrapped in a vertically-scrollable container
+           (max-height: ~24rem) so a long findings list scrolls within the
+           section instead of extending the whole page. The thead is sticky
+           so column labels stay visible while scrolling. */
+        <div className="max-h-96 overflow-y-auto overflow-x-auto rounded-md border border-border/50">
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-background">
               <tr className="border-b border-border text-left text-muted-foreground">
-                <th className="pb-2 font-medium">Rule</th>
-                <th className="pb-2 font-medium">Severity</th>
-                <th className="pb-2 font-medium">File</th>
-                <th className="pb-2 font-medium text-right">Line</th>
-                <th className="pb-2 font-medium">Message</th>
+                <th className="pb-2 pt-2 px-2 font-medium">Rule</th>
+                <th className="pb-2 pt-2 px-2 font-medium">Severity</th>
+                <th className="pb-2 pt-2 px-2 font-medium">File</th>
+                <th className="pb-2 pt-2 px-2 font-medium text-right">Line</th>
+                <th className="pb-2 pt-2 px-2 font-medium">Message</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((f, i) => (
                 <tr
                   key={`${f.rule_id}-${f.file}-${f.line}-${i}`}
-                  className="border-b border-border/50"
+                  className="border-b border-border/50 align-top"
                 >
-                  <td className="py-1.5 text-xs">
+                  <td className="py-1.5 px-2 text-xs">
                     <span className="font-medium">{f.rule_name || f.rule_id}</span>
                     {f.rule_name && f.rule_name !== f.rule_id && (
                       <span className="ml-1 text-muted-foreground font-mono">({f.rule_id})</span>
                     )}
                   </td>
-                  <td className="py-1.5">
+                  <td className="py-1.5 px-2">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getSeverityColor(f.severity)}`}
                     >
                       {f.severity || "unknown"}
                     </span>
                   </td>
-                  <td className="py-1.5 font-mono text-xs max-w-[200px] truncate">
+                  <td className="py-1.5 px-2 font-mono text-xs max-w-[220px] break-all">
                     {f.file}
                   </td>
-                  <td className="py-1.5 text-right font-mono text-xs">
+                  <td className="py-1.5 px-2 text-right font-mono text-xs">
                     {f.line}
                   </td>
-                  <td className="py-1.5 text-xs max-w-[300px] truncate">
+                  {/* Message wraps so long text is fully readable; break-words
+                      handles very long unbroken tokens (e.g. identifiers). */}
+                  <td className="py-1.5 px-2 text-xs whitespace-normal break-words">
                     {f.message}
                   </td>
                 </tr>

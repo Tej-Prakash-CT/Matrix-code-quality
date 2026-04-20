@@ -9,7 +9,7 @@ import {
   formatDelta,
 } from "@/lib/formatters";
 import { Sparkline } from "@/components/charts/sparkline";
-import { ArrowUp, ArrowDown, Minus } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, ChevronDown, ChevronRight, Info } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -29,13 +29,31 @@ const GRADE_COLORS: Record<string, string> = {
   D: "#f97316",
   E: "#ef4444",
 };
-const GRADE_LABELS: Record<string, { title: string; desc: string }> = {
-  A: { title: "Excellent", desc: "Meets all quality gates" },
-  B: { title: "Good", desc: "Minor issues, safe to ship" },
-  C: { title: "Fair", desc: "Noticeable issues, review advised" },
-  D: { title: "Poor", desc: "Multiple failing checks" },
-  E: { title: "Critical", desc: "Blocking issues, needs rework" },
+const GRADE_LABELS: Record<string, { title: string; desc: string; range: string }> = {
+  A: { title: "Excellent", desc: "Meets all quality gates",         range: "Score ≥ 85" },
+  B: { title: "Good",      desc: "Minor issues, safe to ship",      range: "70 – 84"    },
+  C: { title: "Fair",      desc: "Noticeable issues, review advised", range: "55 – 69"  },
+  D: { title: "Poor",      desc: "Multiple failing checks",         range: "40 – 54"    },
+  E: { title: "Critical",  desc: "Blocking issues, needs rework",   range: "< 40"       },
 };
+
+/** Six dimensions of the weighted grade score. Weights mirror
+ *  GradeWeights in backend/admin_config.py (defaults). Admins can tune
+ *  weights at runtime; this panel shows the defaults as a reference. */
+const GRADE_DIMENSIONS: {
+  name: string;
+  weight: string;
+  tool: string;
+  best: string;
+  worst: string;
+}[] = [
+  { name: "Reliability",     weight: "25%", tool: "Semgrep bugs",          best: "0 bugs → 100",              worst: ">10 bugs → 20"             },
+  { name: "Security",        weight: "25%", tool: "Bandit + Gitleaks",     best: "no issues / secrets → 100", worst: "any HIGH or secret → 20"   },
+  { name: "Maintainability", weight: "20%", tool: "Tech-debt ratio",       best: "ratio ≤ 5% → 100",          worst: "ratio > 50% → 20"          },
+  { name: "Coverage",        weight: "15%", tool: "Coverage.py",           best: "100% → 100",                worst: "0% → 0"                    },
+  { name: "Duplication",     weight: "10%", tool: "jscpd",                 best: "0% duplicated → 100",       worst: ">10% duplicated → 20"      },
+  { name: "Tests",           weight: "5%",  tool: "pytest pass rate",      best: "all passing → 100",         worst: "<70% passing → 20"         },
+];
 
 function DeltaArrow({
   direction,
@@ -66,6 +84,7 @@ export default function OverviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
+  const [showGradeHelp, setShowGradeHelp] = useState(false);
 
   useEffect(() => {
     api
@@ -165,7 +184,8 @@ export default function OverviewPage() {
             )}
           </div>
 
-          {/* Grade legend */}
+          {/* Grade legend — each card shows the grade letter, label, and the
+              weighted-score threshold that puts a PR into that bucket. */}
           <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             {GRADE_ORDER.map((g) => (
               <div
@@ -181,6 +201,9 @@ export default function OverviewPage() {
                 <div className="min-w-0">
                   <div className="text-xs font-semibold leading-tight">
                     {GRADE_LABELS[g].title}
+                    <span className="ml-1 font-mono font-normal text-[10px] text-muted-foreground">
+                      {GRADE_LABELS[g].range}
+                    </span>
                   </div>
                   <div className="text-[10px] text-muted-foreground leading-tight truncate">
                     {GRADE_LABELS[g].desc}
@@ -188,6 +211,103 @@ export default function OverviewPage() {
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* ── "How is a grade calculated?" explainer ────────────────────
+              Collapsed by default so the chart stays the focal point. When
+              expanded, shows the 6 weighted dimensions + thresholds so the
+              team can trace exactly why a PR landed in its bucket. */}
+          <div className="mt-3 border border-border/50 rounded-md">
+            <button
+              onClick={() => setShowGradeHelp((v) => !v)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-secondary/50 transition-colors"
+            >
+              {showGradeHelp ? (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              )}
+              <Info className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="text-xs font-medium">
+                How is a grade calculated?
+              </span>
+              <span className="text-[10px] text-muted-foreground ml-auto">
+                Click to {showGradeHelp ? "hide" : "show"}
+              </span>
+            </button>
+
+            {showGradeHelp && (
+              <div className="px-3 pb-3 pt-1 space-y-3 text-xs">
+                <p className="text-muted-foreground">
+                  Each PR is scored on <strong>6 dimensions</strong>, each
+                  0–100. The dimensions are combined using the weights below,
+                  and the weighted total is mapped to a letter grade.
+                </p>
+
+                {/* Dimensions table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-left text-muted-foreground">
+                        <th className="pb-1.5 pr-2 font-medium">Dimension</th>
+                        <th className="pb-1.5 pr-2 font-medium">Weight</th>
+                        <th className="pb-1.5 pr-2 font-medium">Source</th>
+                        <th className="pb-1.5 pr-2 font-medium">Best case</th>
+                        <th className="pb-1.5 pr-2 font-medium">Worst case</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {GRADE_DIMENSIONS.map((d) => (
+                        <tr
+                          key={d.name}
+                          className="border-b border-border/30 align-top"
+                        >
+                          <td className="py-1 pr-2 font-medium">{d.name}</td>
+                          <td className="py-1 pr-2 font-mono">{d.weight}</td>
+                          <td className="py-1 pr-2 text-muted-foreground">{d.tool}</td>
+                          <td className="py-1 pr-2">{d.best}</td>
+                          <td className="py-1 pr-2">{d.worst}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Grade thresholds */}
+                <div>
+                  <div className="text-xs font-medium mb-1">
+                    Weighted score → letter grade
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                    {GRADE_ORDER.map((g) => (
+                      <div
+                        key={g}
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary/40 border border-border/50"
+                      >
+                        <span
+                          className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold text-white shrink-0"
+                          style={{ backgroundColor: GRADE_COLORS[g] }}
+                        >
+                          {g}
+                        </span>
+                        <span className="font-mono text-[11px]">
+                          {GRADE_LABELS[g].range}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-muted-foreground">
+                  <strong>Heads-up:</strong> the letter grade and the CI
+                  pass/fail verdict are independent. A PR can earn grade
+                  <span className="font-mono mx-1">A</span>
+                  and still be blocked by the CI Quality Gate (e.g. a single
+                  Ruff error) because the gate uses hard thresholds while the
+                  grade uses a weighted average.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="h-72 mt-4">
