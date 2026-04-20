@@ -11,9 +11,6 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   Cell,
-  PieChart,
-  Pie,
-  Legend,
 } from "recharts";
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -22,26 +19,16 @@ const SEVERITY_COLORS: Record<string, string> = {
   low: "#eab308",
 };
 
-const OWASP_COLORS = [
-  "#ef4444",
-  "#f97316",
-  "#eab308",
-  "#3b82f6",
-  "#9f7aea",
-  "#ec4899",
-  "#14b8a6",
-  "#6366f1",
-  "#0ea5e9",
-  "#22c55e",
-];
-
 export default function SecurityPage() {
   const [data, setData] = useState<SecurityOverviewOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedOwasp, setExpandedOwasp] = useState<string | null>(null);
-  // Low/medium are filtered out server-side per admin config; default to high.
-  const [findingsFilter, setFindingsFilter] = useState<string>("high");
+  const findingsFilter = "high";
+  // Selected severity bar in the Bandit Severity Distribution chart — clicking
+  // a bar toggles an inline drill-down panel grouped by file.
+  const [selectedBanditSeverity, setSelectedBanditSeverity] =
+    useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -68,32 +55,14 @@ export default function SecurityPage() {
       <p className="text-muted-foreground">No security data available.</p>
     );
 
-  // OWASP horizontal bar data
-  const owaspBarData = data.owasp_categories
-    .sort((a, b) => b.count - a.count)
-    .map((cat) => ({
-      category: cat.category_id,
-      name: cat.category,
-      count: cat.count,
-    }));
-
-  // Bandit severity pie
-  const banditPieData = [
-    { name: "High", value: data.bandit_severity.high, fill: SEVERITY_COLORS.high },
-    { name: "Medium", value: data.bandit_severity.medium, fill: SEVERITY_COLORS.medium },
-    { name: "Low", value: data.bandit_severity.low, fill: SEVERITY_COLORS.low },
-  ].filter((d) => d.value > 0);
-
-  // Top recurring violations bar
-  const recurringBarData = data.top_recurring
-    .slice(0, 10)
-    .map((v) => ({
-      name: v.rule_name || v.rule_id,
-      rule_id: v.rule_id,
-      count: v.count,
-      tool: v.tool,
-      severity: v.severity,
-    }));
+  // Bandit severity distribution — rendered as a clickable bar chart.
+  // Each bar carries both the severity key (lowercase, used for lookups
+  // into allFindings) and a display name.
+  const banditBarData = [
+    { severity: "high",   name: "High",   count: data.bandit_severity.high,   fill: SEVERITY_COLORS.high   },
+    { severity: "medium", name: "Medium", count: data.bandit_severity.medium, fill: SEVERITY_COLORS.medium },
+    { severity: "low",    name: "Low",    count: data.bandit_severity.low,    fill: SEVERITY_COLORS.low    },
+  ].filter((d) => d.count > 0);
 
   // Collect all findings from OWASP categories for the findings table
   const allFindings: (ToolFinding & { owasp_category: string })[] =
@@ -168,170 +137,212 @@ export default function SecurityPage() {
         ))}
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* OWASP Categories Horizontal Bar */}
-        {owaspBarData.length > 0 && (
-          <div className="bg-card rounded-lg p-4 shadow-sm">
-            <h2 className="text-lg font-semibold mb-4">OWASP Categories</h2>
-            <div className="h-72">
+      {/* Bandit Severity Distribution — clickable bar chart. Clicking a bar
+          selects that severity and opens an inline drill-down grouped by
+          file so reviewers can see exactly where the issues live.
+          (Top Recurring Violations and the OWASP Categories bar chart were
+          removed from this page to avoid leading with negative messaging.) */}
+      <div className="bg-card rounded-lg p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-2">
+          <div>
+            <h2 className="text-lg font-semibold">
+              Bandit Severity Distribution
+              <span className="text-xs text-muted-foreground ml-2">
+                ({data.bandit_severity.notebook_count} notebooks scanned)
+              </span>
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Click a bar to see which files contain findings at that severity.
+            </p>
+          </div>
+          {selectedBanditSeverity && (
+            <button
+              onClick={() => setSelectedBanditSeverity(null)}
+              className="text-xs px-2.5 py-1 rounded-full border border-border hover:bg-accent transition-colors"
+            >
+              Clear selection
+            </button>
+          )}
+        </div>
+
+        {banditBarData.length > 0 ? (
+          <>
+            <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={owaspBarData}
-                  layout="vertical"
-                  margin={{ left: 140, right: 20 }}
+                  data={banditBarData}
+                  margin={{ left: 10, right: 20, top: 10, bottom: 5 }}
                 >
                   <CartesianGrid
                     strokeDasharray="3 3"
                     stroke="var(--color-border)"
                   />
                   <XAxis
-                    type="number"
-                    tick={{ fontSize: 10 }}
+                    dataKey="name"
+                    tick={{ fontSize: 12, fontWeight: 600 }}
                     stroke="var(--color-muted-foreground)"
                   />
                   <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={140}
-                    tick={{ fontSize: 10 }}
+                    allowDecimals={false}
+                    tick={{ fontSize: 11 }}
                     stroke="var(--color-muted-foreground)"
                   />
                   <Tooltip
+                    cursor={{ fill: "var(--color-accent)", opacity: 0.2 }}
                     contentStyle={{
                       backgroundColor: "var(--color-card)",
                       border: "1px solid var(--color-border)",
                       borderRadius: "0.375rem",
                       color: "var(--color-foreground)",
                     }}
-                    formatter={(value: number) => [
-                      `${value} findings`,
-                      "Count",
-                    ]}
+                    formatter={(value: number) => [`${value} findings`, "Count"]}
+                    labelFormatter={(label: string) =>
+                      `${label} severity — click to view files`
+                    }
                   />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                    {owaspBarData.map((_, i) => (
+                  <Bar
+                    dataKey="count"
+                    radius={[6, 6, 0, 0]}
+                    onClick={(payload) => {
+                      const sev = (payload as { severity?: string })?.severity;
+                      if (!sev) return;
+                      setSelectedBanditSeverity((cur) =>
+                        cur === sev ? null : sev
+                      );
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
+                    {banditBarData.map((d, i) => (
                       <Cell
                         key={i}
-                        fill={OWASP_COLORS[i % OWASP_COLORS.length]}
+                        fill={d.fill}
+                        fillOpacity={
+                          selectedBanditSeverity &&
+                          selectedBanditSeverity !== d.severity
+                            ? 0.35
+                            : 1
+                        }
+                        stroke={
+                          selectedBanditSeverity === d.severity
+                            ? "var(--color-foreground)"
+                            : undefined
+                        }
+                        strokeWidth={
+                          selectedBanditSeverity === d.severity ? 2 : 0
+                        }
                       />
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
+
+            {/* Drill-down: files contributing to the selected severity.
+                Built from allFindings (OWASP-mapped) filtered by severity.
+                Medium/Low findings may not appear here if the admin severity
+                policy filters them out server-side — in that case we show a
+                short note so the user isn't left wondering. */}
+            {selectedBanditSeverity && (() => {
+              const sev = selectedBanditSeverity;
+              const rows = allFindings.filter(
+                (f) => f.severity.toLowerCase() === sev
+              );
+              const fileGroups = (() => {
+                const g: Record<string, typeof rows> = {};
+                for (const r of rows) (g[r.file || "(unknown)"] ??= []).push(r);
+                return Object.entries(g).sort((a, b) => b[1].length - a[1].length);
+              })();
+              const totalAtSeverity =
+                sev === "high"
+                  ? data.bandit_severity.high
+                  : sev === "medium"
+                  ? data.bandit_severity.medium
+                  : data.bandit_severity.low;
+
+              return (
+                <div className="mt-4 border border-border/50 rounded-md">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-secondary/30 border-b border-border/50">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getSeverityColor(sev)}`}
+                    >
+                      {sev}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {rows.length} of {totalAtSeverity} finding
+                      {totalAtSeverity !== 1 ? "s" : ""} across{" "}
+                      {fileGroups.length} file
+                      {fileGroups.length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  {rows.length === 0 ? (
+                    <p className="text-xs text-muted-foreground px-3 py-3">
+                      No individual findings available for this severity.
+                      {sev !== "high" &&
+                        " The admin severity policy may be filtering low/medium details out of the API response."}
+                    </p>
+                  ) : (
+                    <div className="max-h-80 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 z-10 bg-background">
+                          <tr className="border-b border-border text-left text-muted-foreground">
+                            <th className="pb-1.5 pt-1.5 px-3 font-medium text-xs">
+                              File
+                            </th>
+                            <th className="pb-1.5 pt-1.5 px-3 font-medium text-xs text-right">
+                              Findings
+                            </th>
+                            <th className="pb-1.5 pt-1.5 px-3 font-medium text-xs">
+                              Lines
+                            </th>
+                            <th className="pb-1.5 pt-1.5 px-3 font-medium text-xs">
+                              Top rule
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {fileGroups.map(([file, items]) => {
+                            const lines = items
+                              .map((i) => i.line)
+                              .filter(Boolean)
+                              .sort((a, b) => a - b)
+                              .slice(0, 5)
+                              .join(", ");
+                            const topRule =
+                              items[0]?.rule_name || items[0]?.rule_id || "";
+                            return (
+                              <tr
+                                key={file}
+                                className="border-b border-border/30 align-top"
+                              >
+                                <td className="py-1.5 px-3 font-mono text-xs break-all">
+                                  {file}
+                                </td>
+                                <td className="py-1.5 px-3 text-right font-mono text-xs">
+                                  {items.length}
+                                </td>
+                                <td className="py-1.5 px-3 font-mono text-xs text-muted-foreground">
+                                  {lines || "—"}
+                                </td>
+                                <td className="py-1.5 px-3 text-xs">
+                                  {topRule}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </>
+        ) : (
+          <div className="h-40 flex items-center justify-center">
+            <p className="text-muted-foreground">No security findings detected</p>
           </div>
         )}
-
-        {/* Bandit Severity Pie */}
-        <div className="bg-card rounded-lg p-4 shadow-sm">
-          <h2 className="text-lg font-semibold mb-4">
-            Bandit Severity Distribution
-            <span className="text-xs text-muted-foreground ml-2">
-              ({data.bandit_severity.notebook_count} notebooks scanned)
-            </span>
-          </h2>
-          {banditPieData.length > 0 ? (
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={banditPieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={90}
-                    paddingAngle={3}
-                    dataKey="value"
-                    nameKey="name"
-                    label={({ name, value }) => `${name}: ${value}`}
-                  >
-                    {banditPieData.map((entry, i) => (
-                      <Cell key={i} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "var(--color-card)",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: "0.375rem",
-                      color: "var(--color-foreground)",
-                    }}
-                  />
-                  <Legend
-                    wrapperStyle={{ fontSize: "11px" }}
-                    formatter={(value: string) => (
-                      <span className="text-foreground">{value}</span>
-                    )}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="h-72 flex items-center justify-center">
-              <p className="text-muted-foreground">No security findings detected</p>
-            </div>
-          )}
-        </div>
       </div>
-
-      {/* Top Recurring Violations */}
-      {recurringBarData.length > 0 && (
-        <div className="bg-card rounded-lg p-4 shadow-sm">
-          <h2 className="text-lg font-semibold mb-4">
-            Top Recurring Security Violations
-          </h2>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={recurringBarData}
-                layout="vertical"
-                margin={{ left: 120, right: 20 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="var(--color-border)"
-                />
-                <XAxis
-                  type="number"
-                  tick={{ fontSize: 10 }}
-                  stroke="var(--color-muted-foreground)"
-                />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={160}
-                  tick={{ fontSize: 10 }}
-                  stroke="var(--color-muted-foreground)"
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--color-card)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: "0.375rem",
-                    color: "var(--color-foreground)",
-                  }}
-                  formatter={(value: number) => [
-                    `${value} occurrences`,
-                    "Count",
-                  ]}
-                />
-                <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                  {recurringBarData.map((entry, i) => (
-                    <Cell
-                      key={i}
-                      fill={
-                        SEVERITY_COLORS[entry.severity.toLowerCase()] ||
-                        "#6366f1"
-                      }
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
 
       {/* OWASP Category Expandable Details */}
       {data.owasp_categories.length > 0 && (
@@ -431,30 +442,6 @@ export default function SecurityPage() {
         <div className="bg-card rounded-lg p-4 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">All Security Findings</h2>
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-muted-foreground">Severity:</label>
-              <select
-                value={findingsFilter}
-                onChange={(e) => setFindingsFilter(e.target.value)}
-                className="text-sm bg-card border border-border rounded-md px-2 py-1"
-              >
-                <option value="high">
-                  High (
-                  {
-                    allFindings.filter(
-                      (f) => f.severity.toLowerCase() === "high"
-                    ).length
-                  }
-                  )
-                </option>
-              </select>
-              <span
-                className="text-xs text-muted-foreground"
-                title="Low and medium severity findings are filtered out via the Admin severity policy."
-              >
-                (low/medium hidden)
-              </span>
-            </div>
           </div>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
             <table className="w-full text-sm">

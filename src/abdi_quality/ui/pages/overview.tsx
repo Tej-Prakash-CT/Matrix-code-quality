@@ -117,6 +117,20 @@ export default function OverviewPage() {
     fill: GRADE_COLORS[grade],
   })).filter((d) => d.count > 0);
 
+  // Summary stats for the Quality Grade Distribution panel — derived from the
+  // same `recent_activity` universe the chart counts, so Total here always
+  // matches the sum of the bars. (Note: this is "recent scans", not the
+  // all-time total that the Team page reports — those are different windows.)
+  const recentTotal   = data.recent_activity.length;
+  const recentPassing = data.recent_activity.filter((s) => s.status === "pass").length;
+  const recentFailing = recentTotal - recentPassing;
+  const recentPassPct = recentTotal
+    ? Math.round((recentPassing / recentTotal) * 1000) / 10
+    : 0;
+  const topGrade = gradeDistribution.length
+    ? gradeDistribution.reduce((a, b) => (b.count > a.count ? b : a)).grade
+    : "—";
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header with grade */}
@@ -168,10 +182,19 @@ export default function OverviewPage() {
         <div className="bg-card rounded-lg p-4 shadow-sm">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
-              <h2 className="text-lg font-semibold">Quality Grade Distribution</h2>
+              <h2 className="text-lg font-semibold">
+                Quality Grade Distribution
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  (recent {recentTotal} scans)
+                </span>
+              </h2>
               <p className="text-xs text-muted-foreground">
                 PRs by quality grade across recent scans &mdash; click a bar to
-                view PRs in that grade
+                view PRs in that grade.
+                <span className="ml-1">
+                  Counts reflect the latest {recentTotal} scans shown below;
+                  the all-time total appears on the Team page.
+                </span>
               </p>
             </div>
             {selectedGrade && (
@@ -182,6 +205,58 @@ export default function OverviewPage() {
                 Clear filter
               </button>
             )}
+          </div>
+
+          {/* Summary strip — gives the same at-a-glance context the Team Health
+              page has (Total / Pass / Fail), derived from the same universe
+              the chart counts. Prevents the "10 here vs 43 on Team" confusion
+              by making the window explicit. */}
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="p-2 rounded-md bg-secondary/40 border border-border/50">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                Total PRs
+              </div>
+              <div className="text-lg font-semibold leading-tight">
+                {recentTotal}
+              </div>
+            </div>
+            <div className="p-2 rounded-md bg-secondary/40 border border-border/50">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                Passing
+              </div>
+              <div className="text-lg font-semibold leading-tight text-green-600">
+                {recentPassing}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  ({recentPassPct}%)
+                </span>
+              </div>
+            </div>
+            <div className="p-2 rounded-md bg-secondary/40 border border-border/50">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                Failing
+              </div>
+              <div className="text-lg font-semibold leading-tight text-red-600">
+                {recentFailing}
+              </div>
+            </div>
+            <div className="p-2 rounded-md bg-secondary/40 border border-border/50">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                Most common grade
+              </div>
+              <div className="text-lg font-semibold leading-tight flex items-center gap-2">
+                <span
+                  className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white shrink-0"
+                  style={{
+                    backgroundColor: GRADE_COLORS[topGrade] || "#94a3b8",
+                  }}
+                >
+                  {topGrade}
+                </span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {GRADE_LABELS[topGrade]?.title ?? ""}
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Grade legend — each card shows the grade letter, label, and the
