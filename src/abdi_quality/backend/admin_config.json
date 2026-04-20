@@ -45,12 +45,11 @@
     "maintainability": 0.25,
     "coverage": 0.0,
     "duplication": 0.15,
-    "tests": 0.0
+    "ruff": 0.0
   },
   "severity_filter": {
     "min_severity": [
-      "high",
-      "medium"
+      "high"
     ],
     "fail_on": [
       "high",

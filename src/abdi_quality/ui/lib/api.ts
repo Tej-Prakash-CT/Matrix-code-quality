@@ -293,7 +293,7 @@ export interface GradeWeights {
   maintainability: number;
   coverage: number;
   duplication: number;
-  tests: number;
+  ruff: number;
 }
 
 export interface SeverityFilter {

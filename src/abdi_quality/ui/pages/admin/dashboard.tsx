@@ -371,14 +371,14 @@ function WeightsPane({
     w.security +
     w.maintainability +
     w.duplication +
-    w.tests;
+    w.ruff;
 
   const rows: [keyof typeof w, string][] = [
     ["reliability", "Reliability"],
     ["security", "Security"],
     ["maintainability", "Maintainability"],
     ["duplication", "Duplication"],
-    ["tests", "Tests"],
+    ["ruff", "Ruff"],
   ];
 
   return (

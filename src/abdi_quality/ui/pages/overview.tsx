@@ -39,21 +39,97 @@ const GRADE_LABELS: Record<string, { title: string; desc: string; range: string 
 
 /** Six dimensions of the weighted grade score. Weights mirror
  *  GradeWeights in backend/admin_config.py (defaults). Admins can tune
- *  weights at runtime; this panel shows the defaults as a reference. */
+ *  weights at runtime; this panel shows the defaults as a reference.
+ *  Each dimension's scoring curve is shown as tier chips: the input
+ *  range on top, the score below. Chips are colored by score so the
+ *  reader can see "good → bad" at a glance. */
+type Tier = { when: string; score: number };
+
 const GRADE_DIMENSIONS: {
   name: string;
   weight: string;
   tool: string;
-  best: string;
-  worst: string;
+  tiers: Tier[];
 }[] = [
-  { name: "Reliability",     weight: "25%", tool: "Semgrep bugs",          best: "0 bugs → 100",              worst: ">10 bugs → 20"             },
-  { name: "Security",        weight: "25%", tool: "Bandit + Gitleaks",     best: "no issues / secrets → 100", worst: "any HIGH or secret → 20"   },
-  { name: "Maintainability", weight: "20%", tool: "Tech-debt ratio",       best: "ratio ≤ 5% → 100",          worst: "ratio > 50% → 20"          },
-  { name: "Coverage",        weight: "15%", tool: "Coverage.py",           best: "100% → 100",                worst: "0% → 0"                    },
-  { name: "Duplication",     weight: "10%", tool: "jscpd",                 best: "0% duplicated → 100",       worst: ">10% duplicated → 20"      },
-  { name: "Tests",           weight: "5%",  tool: "pytest pass rate",      best: "all passing → 100",         worst: "<70% passing → 20"         },
+  {
+    name: "Reliability",
+    weight: "25%",
+    tool: "Semgrep bugs",
+    tiers: [
+      { when: "0 bugs",    score: 100 },
+      { when: "1–3 bugs",  score: 80  },
+      { when: "4–10 bugs", score: 50  },
+      { when: "11+ bugs",  score: 20  },
+    ],
+  },
+  {
+    name: "Security",
+    weight: "25%",
+    tool: "Bandit + Gitleaks",
+    tiers: [
+      { when: "Clean",       score: 100 },
+      { when: "Low only",    score: 80  },
+      { when: "Medium only", score: 60  },
+      { when: "High/secret", score: 20  },
+    ],
+  },
+  {
+    name: "Maintainability",
+    weight: "20%",
+    tool: "Tech-debt ratio",
+    tiers: [
+      { when: "≤ 5%",  score: 100 },
+      { when: "≤ 10%", score: 80  },
+      { when: "≤ 20%", score: 60  },
+      { when: "≤ 50%", score: 40  },
+      { when: "> 50%", score: 20  },
+    ],
+  },
+  {
+    name: "Coverage",
+    weight: "15%",
+    tool: "Coverage.py",
+    tiers: [
+      { when: "100%", score: 100 },
+      { when: "75%",  score: 75  },
+      { when: "50%",  score: 50  },
+      { when: "25%",  score: 25  },
+      { when: "0%",   score: 0   },
+    ],
+  },
+  {
+    name: "Duplication",
+    weight: "10%",
+    tool: "jscpd",
+    tiers: [
+      { when: "0%",    score: 100 },
+      { when: "≤ 3%",  score: 80  },
+      { when: "≤ 5%",  score: 60  },
+      { when: "≤ 10%", score: 40  },
+      { when: "> 10%", score: 20  },
+    ],
+  },
+  {
+    name: "Ruff",
+    weight: "5%",
+    tool: "Ruff errors",
+    tiers: [
+      { when: "0 errors",    score: 100 },
+      { when: "1–3 errors",  score: 80  },
+      { when: "4–10 errors", score: 50  },
+      { when: "11+ errors",  score: 20  },
+    ],
+  },
 ];
+
+/** Background + text classes for a score chip. Green = best, red = worst. */
+function scoreChipClasses(score: number): string {
+  if (score >= 90) return "bg-green-100 text-green-800 border-green-300";
+  if (score >= 70) return "bg-lime-100  text-lime-800  border-lime-300";
+  if (score >= 50) return "bg-amber-100 text-amber-800 border-amber-300";
+  if (score >= 30) return "bg-orange-100 text-orange-800 border-orange-300";
+  return "bg-red-100 text-red-800 border-red-300";
+}
 
 function DeltaArrow({
   direction,
@@ -327,8 +403,7 @@ export default function OverviewPage() {
                         <th className="pb-1.5 pr-2 font-medium">Dimension</th>
                         <th className="pb-1.5 pr-2 font-medium">Weight</th>
                         <th className="pb-1.5 pr-2 font-medium">Source</th>
-                        <th className="pb-1.5 pr-2 font-medium">Best case</th>
-                        <th className="pb-1.5 pr-2 font-medium">Worst case</th>
+                        <th className="pb-1.5 pr-2 font-medium">Scale (condition → score)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -340,8 +415,20 @@ export default function OverviewPage() {
                           <td className="py-1 pr-2 font-medium">{d.name}</td>
                           <td className="py-1 pr-2 font-mono">{d.weight}</td>
                           <td className="py-1 pr-2 text-muted-foreground">{d.tool}</td>
-                          <td className="py-1 pr-2">{d.best}</td>
-                          <td className="py-1 pr-2">{d.worst}</td>
+                          <td className="py-1 pr-2">
+                            <div className="flex flex-wrap gap-1">
+                              {d.tiers.map((t) => (
+                                <span
+                                  key={t.when}
+                                  className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] ${scoreChipClasses(t.score)}`}
+                                >
+                                  <span className="font-medium">{t.when}</span>
+                                  <span className="opacity-60">→</span>
+                                  <span className="font-mono">{t.score}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

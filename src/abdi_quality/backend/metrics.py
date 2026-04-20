@@ -189,18 +189,13 @@ def _duplication_score(report: dict) -> float:
     return 20
 
 
-def _test_score(report: dict) -> float:
-    pt = report.get("pytest", {})
-    total = pt.get("total", 0)
-    if total == 0:
-        return 50  # neutral if no tests
-    passed = pt.get("passed", 0)
-    rate = passed / total * 100 if total else 0
-    if rate == 100:
+def _ruff_score(report: dict) -> float:
+    errors = report.get("summary", {}).get("ruff_errors", 0)
+    if errors == 0:
         return 100
-    if rate >= 90:
+    if errors <= 3:
         return 80
-    if rate >= 70:
+    if errors <= 10:
         return 50
     return 20
 
@@ -217,7 +212,7 @@ def compute_quality_grade(report: dict, cfg: AdminConfig | None = None) -> Quali
         + _maintainability_score(report) * gw.maintainability
         + min(cov, 100) * gw.coverage
         + _duplication_score(report) * gw.duplication
-        + _test_score(report) * gw.tests
+        + _ruff_score(report) * gw.ruff
     )
 
     if weighted >= 85:

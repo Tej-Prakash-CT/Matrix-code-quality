@@ -37,7 +37,7 @@ class GradeWeights(BaseModel):
     maintainability: float = 0.20
     coverage: float = 0.15
     duplication: float = 0.10
-    tests: float = 0.05
+    ruff: float = 0.05
 
 
 class SeverityFilter(BaseModel):
