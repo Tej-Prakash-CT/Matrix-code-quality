@@ -242,12 +242,13 @@ jobs:
           # would log a parse warning and every PR would show zero Ruff findings.
           python3 -c "import json; json.load(open('ruff-report.json'))" 2>/dev/null \
             || echo "[]" > ruff-report.json
-          echo "Ruff findings: $(python3 -c "import json; print(len(json.load(open('ruff-report.json'))))")"
+          echo "Ruff errors: $(python3 -c "import json; data=json.load(open('ruff-report.json')); print(sum(1 for r in data if (r.get('code') or '').startswith(('E','F','B'))))")"
 
-          # ── Print full Ruff findings in the pipeline log ──────────────────
-          # Surfaces every Ruff issue (file:line  code  message) directly in
-          # the GitHub Actions log so reviewers can see exactly which rules
-          # tripped without downloading the JSON artifact.
+          # ── Print Ruff ERROR-level findings in the pipeline log ───────────
+          # Only blocking errors are surfaced here (codes starting with E/F/B —
+          # same classification used by the aggregator's parse_ruff). Warnings
+          # like G004/I001 are omitted to avoid confusing reviewers about what
+          # actually fails the quality gate.
           echo ""
           echo "============================================================"
           echo "  🧹  RUFF — DETAILED FINDINGS"
@@ -262,13 +263,17 @@ jobs:
               print(f"[WARN] Could not read ruff-report.json: {e}")
               data = []
 
-          if not data:
-              print("  ✅ No Ruff issues found.")
+          def is_error(code: str) -> bool:
+              return code.startswith(("E", "F", "B"))
+
+          errors = [r for r in data if is_error(r.get("code") or "")]
+
+          if not errors:
+              print("  ✅ No Ruff errors found.")
           else:
-              print(f"  Total issues: {len(data)}")
+              print(f"  Total errors: {len(errors)}")
               print("  ------------------------------------------------------------")
-              # Per-finding listing
-              for r in data:
+              for r in errors:
                   code = r.get("code") or "?"
                   msg  = r.get("message", "")
                   fn   = r.get("filename", "")
@@ -277,16 +282,14 @@ jobs:
                   col  = loc.get("column", 0)
                   print(f"  {fn}:{row}:{col}  [{code}]  {msg}")
 
-              # Grouped summary by rule code
               print("  ------------------------------------------------------------")
               print("  Summary by rule:")
-              counts = Counter((r.get("code") or "?") for r in data)
+              counts = Counter((r.get("code") or "?") for r in errors)
               for code, n in counts.most_common():
                   print(f"    {code:<8} {n}")
 
-              # Grouped summary by file
               print("  Summary by file:")
-              file_counts = Counter((r.get("filename") or "?") for r in data)
+              file_counts = Counter((r.get("filename") or "?") for r in errors)
               for fn, n in file_counts.most_common():
                   print(f"    {n:>4}  {fn}")
           PYEOF
