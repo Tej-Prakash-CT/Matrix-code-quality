@@ -644,7 +644,7 @@ jobs:
           print(f\"  │  METRIC                    VALUE       THRESHOLD    │\")
           print(f\"  ├─────────────────────────────────────────────────────┤\")
           print(f\"  │  Secrets (Gitleaks)        {s.get('secrets',0):<12}0            │\")
-          print(f\"  │  Code Duplication (jscpd)  {str(s.get('duplication',0))+'%':<12}≤ 30%        │\")
+          print(f\"  │  Code Duplication (jscpd)  {str(s.get('duplication',0))+'%':<12}≤ 20%        │\")
           print(f\"  │  Semgrep errors            {s.get('bugs_error',0):<12}0            │\")
           print(f\"  │  Bandit HIGH severity      {s.get('security_high',0):<12}0            │\")
           print(f\"  │  Ruff errors               {s.get('ruff_errors',0):<12}0            │\")
@@ -668,8 +668,8 @@ jobs:
               s = report['summary']
               if s.get('secrets', 0) > 0:
                   reasons.append(f\"Secrets detected: {s['secrets']} found\")
-              if s.get('duplication', 0) > 30:
-                  reasons.append(f\"Duplication too high: {s['duplication']}% (limit: 30%)\")
+              if s.get('duplication', 0) > 20:
+                  reasons.append(f\"Duplication too high: {s['duplication']}% (limit: 20%)\")
               if s.get('bugs_error', 0) > 0:
                   reasons.append(f\"Semgrep errors: {s['bugs_error']} found\")
               if s.get('security_high', 0) > 0:
