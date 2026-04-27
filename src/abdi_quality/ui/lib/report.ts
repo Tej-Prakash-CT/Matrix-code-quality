@@ -269,8 +269,9 @@ function renderFooter(ctx: BuildContext): string {
 function renderOverviewSection(
   ctx: BuildContext,
   data: OverviewOut,
+  allScans: ScanSummaryOut[],
 ): string {
-  const { t, lang } = ctx;
+  const { t } = ctx;
   const visibleKpis = data.kpi_cards.filter(
     (k) => !k.label.toLowerCase().includes("coverage"),
   );
@@ -284,9 +285,12 @@ function renderOverviewSection(
     )
     .join("");
 
+  // Holistic grade distribution: count every PR in the dataset, not just the
+  // recent_activity slice the /overview endpoint returns.
+  const totalPrs = allScans.length;
   const dist = ["A", "B", "C", "D", "E"].map((g) => ({
     g,
-    count: data.recent_activity.filter((s) => s.quality_grade === g).length,
+    count: allScans.filter((s) => s.quality_grade === g).length,
   }));
   const distRows = dist
     .map(
@@ -294,22 +298,6 @@ function renderOverviewSection(
       <tr>
         <td><span class="badge ${gradeClass(d.g)}" style="color:#fff">${d.g}</span> ${escapeHtml(t(`grade.${d.g}`))}</td>
         <td class="right">${d.count}</td>
-      </tr>`,
-    )
-    .join("");
-
-  const activity = data.recent_activity
-    .map(
-      (s) => `
-      <tr>
-        <td>#${escapeHtml(s.pr_number)}</td>
-        <td>${escapeHtml(s.author)}</td>
-        <td class="mono">${escapeHtml(s.branch)}</td>
-        <td>${statusBadge(s.status, t)}</td>
-        <td><span class="badge ${gradeClass(s.quality_grade)}" style="color:#fff">${escapeHtml(s.quality_grade)}</span></td>
-        <td class="right">${s.bugs}</td>
-        <td class="right">${s.security}</td>
-        <td>${escapeHtml(fmtDate(s.timestamp, lang))}</td>
       </tr>`,
     )
     .join("");
@@ -326,26 +314,10 @@ function renderOverviewSection(
       </div>
       <div class="kpi-grid">${kpis}</div>
       <h3>${t("overview.gradeDistribution")}</h3>
-      <p class="muted small">${escapeHtml(t("report.gradeDistExplainer", { n: data.recent_activity.length }))}</p>
+      <p class="muted small">${escapeHtml(t("report.gradeDistExplainer", { n: totalPrs }))}</p>
       <table>
         <thead><tr><th>${t("table.grade")}</th><th class="right">${t("table.prCount")}</th></tr></thead>
         <tbody>${distRows}</tbody>
-      </table>
-      <h3>${escapeHtml(t("report.recentN", { n: data.recent_activity.length }))}</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>${t("table.pr")}</th>
-            <th>${t("table.author")}</th>
-            <th>${t("table.branch")}</th>
-            <th>${t("table.status")}</th>
-            <th>${t("table.grade")}</th>
-            <th class="right">${t("table.bugs")}</th>
-            <th class="right">${t("table.security")}</th>
-            <th>${t("table.date")}</th>
-          </tr>
-        </thead>
-        <tbody>${activity}</tbody>
       </table>
     </section>
   `;
@@ -511,7 +483,12 @@ function renderSecuritySection(
     )
     .join("");
 
+  // The security section is for security-grade findings only — Ruff lint
+  // hits (style, complexity) are not security violations and would mislead
+  // readers when the real security counters are all 0.
+  const SECURITY_TOOLS = new Set(["bandit", "semgrep", "gitleaks"]);
   const recurringRows = data.top_recurring
+    .filter((r) => SECURITY_TOOLS.has((r.tool || "").toLowerCase()))
     .map(
       (r) => `
       <tr>
@@ -919,16 +896,20 @@ export interface DashboardReportData {
   trends: TrendsOut;
   team: TeamHealthOut;
   security: SecurityOverviewOut;
+  /** All PRs in the system, not just the /overview endpoint's recent slice.
+   *  Used so the report's grade distribution and PR summary are holistic. */
+  allScans: ScanSummaryOut[];
 }
 
 export async function fetchDashboardData(): Promise<DashboardReportData> {
-  const [overview, trends, team, security] = await Promise.all([
+  const [overview, trends, team, security, allScans] = await Promise.all([
     api.getOverview(),
     api.getTrends(50),
     api.getTeamHealth(),
     api.getSecurityOverview(),
+    api.listScans({ limit: 100 }),
   ]);
-  return { overview, trends, team, security };
+  return { overview, trends, team, security, allScans };
 }
 
 export function buildDashboardHtml(
@@ -939,7 +920,11 @@ export function buildDashboardHtml(
   const ctx: BuildContext = { lang, t };
   const subtitle = `${t("report.section.overview")} · ${t("report.section.trends")} · ${t("report.section.team")} · ${t("report.section.security")}`;
 
-  const recentPrs = data.overview.recent_activity;
+  // Holistic PR list — all scans in the system, sorted newest-first so the
+  // table reads top-down by recency.
+  const allPrs = [...data.allScans].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  );
   const tocItems = [
     t("report.section.scanners"),
     t("report.section.benchmarks"),
@@ -947,7 +932,7 @@ export function buildDashboardHtml(
     t("report.section.trends"),
     t("report.section.team"),
     t("report.section.security"),
-    ...(recentPrs.length ? [t("report.section.prSummary")] : []),
+    ...(allPrs.length ? [t("report.section.prSummary")] : []),
   ];
   const toc = `
     <div class="callout">
@@ -963,11 +948,11 @@ export function buildDashboardHtml(
      ${toc}
      ${renderScannerStack(ctx)}
      ${renderBenchmarks(ctx, data.overview)}
-     ${renderOverviewSection(ctx, data.overview)}
+     ${renderOverviewSection(ctx, data.overview, allPrs)}
      ${renderTrendsSection(ctx, data.trends)}
      ${renderTeamSection(ctx, data.team)}
      ${renderSecuritySection(ctx, data.security)}
-     ${renderPrSummary(ctx, recentPrs)}
+     ${renderPrSummary(ctx, allPrs)}
      ${renderFooter(ctx)}`,
     lang,
     t("report.title"),
@@ -1014,7 +999,7 @@ export function buildPrHtml(ctxData: PrReportContext, lang: Lang): string {
   const contextSections = dashboard
     ? `${renderScannerStack(ctx)}
        ${renderBenchmarks(ctx, dashboard.overview)}
-       ${renderOverviewSection(ctx, dashboard.overview)}
+       ${renderOverviewSection(ctx, dashboard.overview, dashboard.allScans)}
        ${renderTrendsSection(ctx, dashboard.trends)}
        ${renderTeamSection(ctx, dashboard.team)}
        ${renderSecuritySection(ctx, dashboard.security)}`

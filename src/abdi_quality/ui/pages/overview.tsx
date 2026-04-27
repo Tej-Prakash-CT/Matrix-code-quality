@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type OverviewOut } from "@/lib/api";
+import { api, type OverviewOut, type ScanSummaryOut } from "@/lib/api";
 import {
   formatDate,
   getGradeColor,
@@ -159,15 +159,18 @@ function DeltaArrow({
 export default function OverviewPage() {
   const t = useT();
   const [data, setData] = useState<OverviewOut | null>(null);
+  const [allScans, setAllScans] = useState<ScanSummaryOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
   const [showGradeHelp, setShowGradeHelp] = useState(false);
 
   useEffect(() => {
-    api
-      .getOverview()
-      .then(setData)
+    Promise.all([api.getOverview(), api.listScans({ limit: 100 })])
+      .then(([overview, scans]) => {
+        setData(overview);
+        setAllScans(scans);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -189,18 +192,18 @@ export default function OverviewPage() {
     (card) => !card.label.toLowerCase().includes("coverage")
   );
 
+  // Holistic distribution: every PR in the system, not just the /overview
+  // recent slice. Keeps the dashboard chart in sync with the report.
   const gradeDistribution = GRADE_ORDER.map((grade) => ({
     grade,
-    count: data.recent_activity.filter((s) => s.quality_grade === grade).length,
+    count: allScans.filter((s) => s.quality_grade === grade).length,
     fill: GRADE_COLORS[grade],
   })).filter((d) => d.count > 0);
 
-  // Summary stats for the Quality Grade Distribution panel — derived from the
-  // same `recent_activity` universe the chart counts, so Total here always
-  // matches the sum of the bars. (Note: this is "recent scans", not the
-  // all-time total that the Team page reports — those are different windows.)
-  const recentTotal   = data.recent_activity.length;
-  const recentPassing = data.recent_activity.filter((s) => s.status === "pass").length;
+  // Summary stats are computed over the full dataset so Total here matches
+  // the sum of the bars in the chart above.
+  const recentTotal   = allScans.length;
+  const recentPassing = allScans.filter((s) => s.status === "pass").length;
   const recentFailing = recentTotal - recentPassing;
   const recentPassPct = recentTotal
     ? Math.round((recentPassing / recentTotal) * 1000) / 10
@@ -263,16 +266,12 @@ export default function OverviewPage() {
               <h2 className="text-lg font-semibold">
                 {t("overview.gradeDistribution")}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">
-                  (recent {recentTotal} scans)
+                  ({recentTotal} scans)
                 </span>
               </h2>
               <p className="text-xs text-muted-foreground">
-                PRs by quality grade across recent scans &mdash; click a bar to
+                PRs by quality grade across all scans in the system &mdash; click a bar to
                 view PRs in that grade.
-                <span className="ml-1">
-                  Counts reflect the latest {recentTotal} scans shown below;
-                  the all-time total appears on the Team page.
-                </span>
               </p>
             </div>
             {selectedGrade && (
@@ -553,7 +552,7 @@ export default function OverviewPage() {
                 </h3>
               </div>
               {(() => {
-                const filtered = data.recent_activity.filter(
+                const filtered = allScans.filter(
                   (s) => s.quality_grade === selectedGrade,
                 );
                 if (filtered.length === 0) {
