@@ -160,16 +160,24 @@ export default function OverviewPage() {
   const t = useT();
   const [data, setData] = useState<OverviewOut | null>(null);
   const [allScans, setAllScans] = useState<ScanSummaryOut[]>([]);
+  // Real total from /team — not capped by /scans `limit`. Used as the displayed
+  // PR count so the panel reflects the full dataset, not just the listScans slice.
+  const [totalScans, setTotalScans] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
   const [showGradeHelp, setShowGradeHelp] = useState(false);
 
   useEffect(() => {
-    Promise.all([api.getOverview(), api.listScans({ limit: 100 })])
-      .then(([overview, scans]) => {
+    Promise.all([
+      api.getOverview(),
+      api.listScans({ limit: 100 }),
+      api.getTeamHealth(),
+    ])
+      .then(([overview, scans, team]) => {
         setData(overview);
         setAllScans(scans);
+        setTotalScans(team.total_scans);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -200,13 +208,14 @@ export default function OverviewPage() {
     fill: GRADE_COLORS[grade],
   })).filter((d) => d.count > 0);
 
-  // Summary stats are computed over the full dataset so Total here matches
-  // the sum of the bars in the chart above.
-  const recentTotal   = allScans.length;
+  // Total comes from /team (uncapped); pass/fail counts are derived from the
+  // listScans slice (capped by the server's `le`). If the dataset exceeds the
+  // cap, pass/fail percentages are based on a sample — see the note above.
+  const recentTotal   = totalScans || allScans.length;
   const recentPassing = allScans.filter((s) => s.status === "pass").length;
-  const recentFailing = recentTotal - recentPassing;
-  const recentPassPct = recentTotal
-    ? Math.round((recentPassing / recentTotal) * 1000) / 10
+  const recentFailing = allScans.length - recentPassing;
+  const recentPassPct = allScans.length
+    ? Math.round((recentPassing / allScans.length) * 1000) / 10
     : 0;
   const topGrade = gradeDistribution.length
     ? gradeDistribution.reduce((a, b) => (b.count > a.count ? b : a)).grade

@@ -1,7 +1,6 @@
 import {
   api,
   type OverviewOut,
-  type TrendsOut,
   type TeamHealthOut,
   type SecurityOverviewOut,
   type ScanDetailOut,
@@ -270,6 +269,7 @@ function renderOverviewSection(
   ctx: BuildContext,
   data: OverviewOut,
   allScans: ScanSummaryOut[],
+  totalScansInSystem: number,
 ): string {
   const { t } = ctx;
   const visibleKpis = data.kpi_cards.filter(
@@ -285,9 +285,11 @@ function renderOverviewSection(
     )
     .join("");
 
-  // Holistic grade distribution: count every PR in the dataset, not just the
-  // recent_activity slice the /overview endpoint returns.
-  const totalPrs = allScans.length;
+  // Display the true PR count from the /team endpoint (no cap), but compute
+  // grade counts from whatever rows /scans returned (capped at the server's
+  // listScans `le`). If the dataset exceeds that cap, the bar counts are a
+  // sample — raise the backend cap or add an aggregate endpoint to fix.
+  const totalPrs = totalScansInSystem || allScans.length;
   const dist = ["A", "B", "C", "D", "E"].map((g) => ({
     g,
     count: allScans.filter((s) => s.quality_grade === g).length,
@@ -318,53 +320,6 @@ function renderOverviewSection(
       <table>
         <thead><tr><th>${t("table.grade")}</th><th class="right">${t("table.prCount")}</th></tr></thead>
         <tbody>${distRows}</tbody>
-      </table>
-    </section>
-  `;
-}
-
-function renderTrendsSection(ctx: BuildContext, data: TrendsOut): string {
-  const { t } = ctx;
-  const hidden = new Set(["coverage", "coverage_pct", "tests"]);
-  const visibleSeries = data.series.filter((s) => !hidden.has(s.metric));
-
-  const rows = visibleSeries
-    .map((s) => {
-      const sorted = [...s.data].sort(
-        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-      );
-      const latest = sorted[sorted.length - 1]?.value ?? null;
-      const prev = sorted.length > 1 ? sorted[sorted.length - 2].value : null;
-      const delta = latest !== null && prev !== null ? latest - prev : null;
-      const deltaStr =
-        delta === null
-          ? "—"
-          : `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`;
-      return `
-        <tr>
-          <td>${escapeHtml(s.label)}</td>
-          <td class="right mono">${latest !== null ? latest.toFixed(1) : "—"}</td>
-          <td class="right mono">${deltaStr}</td>
-          <td class="right">${sorted.length}</td>
-        </tr>`;
-    })
-    .join("");
-
-  return `
-    <section class="page-break">
-      <h2>${t("report.section.trends")}</h2>
-      <p class="muted">${t("trends.subtitle", { n: data.scans_included })}</p>
-      <p class="muted small">${escapeHtml(t("report.trends.deltaNote"))}</p>
-      <table>
-        <thead>
-          <tr>
-            <th>${t("trends.metricComparison")}</th>
-            <th class="right">${escapeHtml(t("report.trends.latest"))}</th>
-            <th class="right">${escapeHtml(t("report.trends.changeVsPrev"))}</th>
-            <th class="right">${t("report.scansIncluded")}</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
       </table>
     </section>
   `;
@@ -735,56 +690,6 @@ function renderBenchmarks(ctx: BuildContext, overview: OverviewOut): string {
   `;
 }
 
-// Condensed one-row-per-PR summary for the dashboard-level report.
-// Built from ScanSummaryOut (already returned by /overview) so there are no
-// extra API calls. Full per-tool drill-down lives in the per-PR report.
-function renderPrSummary(ctx: BuildContext, prs: ScanSummaryOut[]): string {
-  const { t, lang } = ctx;
-  if (!prs.length) return "";
-  const rows = prs
-    .map(
-      (p) => `
-        <tr>
-          <td>#${escapeHtml(p.pr_number)}</td>
-          <td>${escapeHtml(p.author)}</td>
-          <td class="mono">${escapeHtml(p.branch)}</td>
-          <td>${statusBadge(p.status, t)}</td>
-          <td><span class="badge ${gradeClass(p.quality_grade)}" style="color:#fff">${escapeHtml(p.quality_grade)}</span></td>
-          <td class="right">${p.bugs}</td>
-          <td class="right">${p.security}</td>
-          <td class="right">${p.secrets}</td>
-          <td class="right">${p.hotspots}</td>
-          <td class="right">${p.duplication.toFixed(1)}%</td>
-          <td>${escapeHtml(fmtDate(p.timestamp, lang))}</td>
-        </tr>`,
-    )
-    .join("");
-  return `
-    <section class="page-break">
-      <h2>${escapeHtml(t("report.section.prSummary"))} <span class="muted small">(${prs.length})</span></h2>
-      <p class="muted small">${escapeHtml(t("report.prSummary.intro"))}</p>
-      <table>
-        <thead>
-          <tr>
-            <th>${t("table.pr")}</th>
-            <th>${t("table.author")}</th>
-            <th>${t("table.branch")}</th>
-            <th>${t("table.status")}</th>
-            <th>${t("table.grade")}</th>
-            <th class="right">${t("table.bugs")}</th>
-            <th class="right">${t("table.security")}</th>
-            <th class="right">Secrets</th>
-            <th class="right">Hotspots</th>
-            <th class="right">Dup %</th>
-            <th>${t("table.date")}</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </section>
-  `;
-}
-
 function renderPrSection(ctx: BuildContext, data: ScanDetailOut): string {
   const { t, lang } = ctx;
   const visibleKpis = data.kpi_cards.filter(
@@ -893,23 +798,21 @@ function renderPrSection(ctx: BuildContext, data: ScanDetailOut): string {
 
 export interface DashboardReportData {
   overview: OverviewOut;
-  trends: TrendsOut;
   team: TeamHealthOut;
   security: SecurityOverviewOut;
   /** All PRs in the system, not just the /overview endpoint's recent slice.
-   *  Used so the report's grade distribution and PR summary are holistic. */
+   *  Used so the report's grade distribution is holistic. */
   allScans: ScanSummaryOut[];
 }
 
 export async function fetchDashboardData(): Promise<DashboardReportData> {
-  const [overview, trends, team, security, allScans] = await Promise.all([
+  const [overview, team, security, allScans] = await Promise.all([
     api.getOverview(),
-    api.getTrends(50),
     api.getTeamHealth(),
     api.getSecurityOverview(),
     api.listScans({ limit: 100 }),
   ]);
-  return { overview, trends, team, security, allScans };
+  return { overview, team, security, allScans };
 }
 
 export function buildDashboardHtml(
@@ -918,21 +821,18 @@ export function buildDashboardHtml(
 ): string {
   const t = makeT(lang);
   const ctx: BuildContext = { lang, t };
-  const subtitle = `${t("report.section.overview")} · ${t("report.section.trends")} · ${t("report.section.team")} · ${t("report.section.security")}`;
+  const subtitle = `${t("report.section.overview")} · ${t("report.section.team")} · ${t("report.section.security")}`;
 
-  // Holistic PR list — all scans in the system, sorted newest-first so the
-  // table reads top-down by recency.
-  const allPrs = [...data.allScans].sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-  );
+  // Per-PR table is intentionally omitted from the dashboard report — at
+  // hundreds of rows it bloats the PDF without adding insight beyond what the
+  // grade distribution already shows. Per-PR detail lives in the per-PR report.
+  const allScans = data.allScans;
   const tocItems = [
     t("report.section.scanners"),
     t("report.section.benchmarks"),
     t("report.section.overview"),
-    t("report.section.trends"),
     t("report.section.team"),
     t("report.section.security"),
-    ...(allPrs.length ? [t("report.section.prSummary")] : []),
   ];
   const toc = `
     <div class="callout">
@@ -948,11 +848,9 @@ export function buildDashboardHtml(
      ${toc}
      ${renderScannerStack(ctx)}
      ${renderBenchmarks(ctx, data.overview)}
-     ${renderOverviewSection(ctx, data.overview, allPrs)}
-     ${renderTrendsSection(ctx, data.trends)}
+     ${renderOverviewSection(ctx, data.overview, allScans, data.team.total_scans)}
      ${renderTeamSection(ctx, data.team)}
      ${renderSecuritySection(ctx, data.security)}
-     ${renderPrSummary(ctx, allPrs)}
      ${renderFooter(ctx)}`,
     lang,
     t("report.title"),
@@ -962,7 +860,7 @@ export function buildDashboardHtml(
 export interface PrReportContext {
   pr: ScanDetailOut;
   /** Optional dashboard context. When provided the per-PR report includes
-   *  Scanner Stack, Industry Benchmarks, Overview, Trends, Team, Security
+   *  Scanner Stack, Industry Benchmarks, Overview, Team, Security
    *  sections as context, then the PR's full per-tool detail at the end. */
   dashboard?: DashboardReportData;
 }
@@ -980,7 +878,6 @@ export function buildPrHtml(ctxData: PrReportContext, lang: Lang): string {
           t("report.section.scanners"),
           t("report.section.benchmarks"),
           t("report.section.overview"),
-          t("report.section.trends"),
           t("report.section.team"),
           t("report.section.security"),
         ]
@@ -999,8 +896,7 @@ export function buildPrHtml(ctxData: PrReportContext, lang: Lang): string {
   const contextSections = dashboard
     ? `${renderScannerStack(ctx)}
        ${renderBenchmarks(ctx, dashboard.overview)}
-       ${renderOverviewSection(ctx, dashboard.overview, dashboard.allScans)}
-       ${renderTrendsSection(ctx, dashboard.trends)}
+       ${renderOverviewSection(ctx, dashboard.overview, dashboard.allScans, dashboard.team.total_scans)}
        ${renderTeamSection(ctx, dashboard.team)}
        ${renderSecuritySection(ctx, dashboard.security)}`
     : "";

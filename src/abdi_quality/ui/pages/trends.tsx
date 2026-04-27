@@ -39,7 +39,7 @@ export default function TrendsPage() {
   const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(
     new Set(["bugs", "security", "duplication"])
   );
-  const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = useState(200);
 
   useEffect(() => {
     setLoading(true);
@@ -148,6 +148,7 @@ export default function TrendsPage() {
             <option value={20}>Last 20</option>
             <option value={50}>Last 50</option>
             <option value={100}>Last 100</option>
+            <option value={200}>Last 200 (max)</option>
           </select>
         </div>
 
