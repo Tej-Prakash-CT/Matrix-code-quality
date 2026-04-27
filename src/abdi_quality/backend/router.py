@@ -57,7 +57,7 @@ async def get_overview() -> OverviewOut:
 async def list_scans(
     author: str | None = Query(default=None),
     status: str | None = Query(default=None),
-    limit: int = Query(default=50, le= 100),
+    limit: int = Query(default=50, le=1000),
 ) -> list[ScanSummaryOut]:
     """List all scans in summary view with optional filters."""
     from .admin_config import load_config as _load_cfg

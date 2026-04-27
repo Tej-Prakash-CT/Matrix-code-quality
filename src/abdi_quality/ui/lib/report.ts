@@ -810,7 +810,7 @@ export async function fetchDashboardData(): Promise<DashboardReportData> {
     api.getOverview(),
     api.getTeamHealth(),
     api.getSecurityOverview(),
-    api.listScans({ limit: 100 }),
+    api.listScans({ limit: 1000 }),
   ]);
   return { overview, team, security, allScans };
 }

@@ -171,7 +171,7 @@ export default function OverviewPage() {
   useEffect(() => {
     Promise.all([
       api.getOverview(),
-      api.listScans({ limit: 100 }),
+      api.listScans({ limit: 1000 }),
       api.getTeamHealth(),
     ])
       .then(([overview, scans, team]) => {
