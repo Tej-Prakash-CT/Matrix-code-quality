@@ -9,6 +9,7 @@ import {
   formatDelta,
 } from "@/lib/formatters";
 import { Sparkline } from "@/components/charts/sparkline";
+import { useT } from "@/lib/i18n";
 import { ArrowUp, ArrowDown, Minus, ChevronDown, ChevronRight, Info } from "lucide-react";
 import {
   BarChart,
@@ -156,6 +157,7 @@ function DeltaArrow({
 }
 
 export default function OverviewPage() {
+  const t = useT();
   const [data, setData] = useState<OverviewOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -217,9 +219,9 @@ export default function OverviewPage() {
           {data.quality_grade}
         </div>
         <div>
-          <h1 className="text-2xl font-bold">Code Quality Overview</h1>
+          <h1 className="text-2xl font-bold">{t("overview.title")}</h1>
           <p className="text-muted-foreground text-sm">
-            Latest scan analysis across all pull requests
+            {t("overview.subtitle")}
           </p>
         </div>
       </div>
@@ -259,7 +261,7 @@ export default function OverviewPage() {
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <h2 className="text-lg font-semibold">
-                Quality Grade Distribution
+                {t("overview.gradeDistribution")}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">
                   (recent {recentTotal} scans)
                 </span>
@@ -619,7 +621,7 @@ export default function OverviewPage() {
 
       {/* Recent Activity Table */}
       <div className="bg-card rounded-lg p-4 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
+        <h2 className="text-lg font-semibold mb-4">{t("overview.recentActivity")}</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

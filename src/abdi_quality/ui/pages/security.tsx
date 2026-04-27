@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type SecurityOverviewOut, type ToolFinding } from "@/lib/api";
 import { formatNumber, getSeverityColor } from "@/lib/formatters";
 import { Shield, AlertTriangle, Lock, Bug } from "lucide-react";
+import { useT } from "@/lib/i18n";
 import {
   BarChart,
   Bar,
@@ -20,6 +21,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 export default function SecurityPage() {
+  const t = useT();
   const [data, setData] = useState<SecurityOverviewOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +78,7 @@ export default function SecurityPage() {
 
   const kpiCards = [
     {
-      label: "Total Vulnerabilities",
+      label: t("security.totalVulns"),
       value: formatNumber(data.total_vulnerabilities),
       icon: Bug,
       color:
@@ -85,14 +87,14 @@ export default function SecurityPage() {
           : "border-red-500",
     },
     {
-      label: "Total Secrets",
+      label: t("security.totalSecrets"),
       value: formatNumber(data.total_secrets),
       icon: Lock,
       color:
         data.total_secrets === 0 ? "border-green-500" : "border-red-500",
     },
     {
-      label: "High Severity",
+      label: t("security.highSeverity"),
       value: formatNumber(data.bandit_severity.high),
       icon: AlertTriangle,
       color:
@@ -101,7 +103,7 @@ export default function SecurityPage() {
           : "border-red-500",
     },
     {
-      label: "OWASP Categories",
+      label: t("security.owaspCategories"),
       value: data.owasp_categories.length.toString(),
       icon: Shield,
       color: "border-purple-500",
@@ -112,9 +114,9 @@ export default function SecurityPage() {
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">Security Overview</h1>
+        <h1 className="text-2xl font-bold">{t("security.title")}</h1>
         <p className="text-muted-foreground text-sm mt-0.5">
-          Vulnerability analysis, secret detection, and OWASP categorization
+          {t("security.subtitle")}
         </p>
       </div>
 
@@ -145,7 +147,7 @@ export default function SecurityPage() {
         <div className="flex items-start justify-between gap-4 flex-wrap mb-2">
           <div>
             <h2 className="text-lg font-semibold">
-              Bandit Severity Distribution
+              {t("security.banditDistribution")}
               <span className="text-xs text-muted-foreground ml-2">
                 ({data.bandit_severity.notebook_count} notebooks scanned)
               </span>
@@ -347,7 +349,7 @@ export default function SecurityPage() {
       {data.owasp_categories.length > 0 && (
         <div className="bg-card rounded-lg p-4 shadow-sm">
           <h2 className="text-lg font-semibold mb-4">
-            OWASP Category Details
+            {t("security.owaspDetails")}
           </h2>
           <div className="space-y-2">
             {data.owasp_categories.map((cat) => (
@@ -440,7 +442,7 @@ export default function SecurityPage() {
       {allFindings.length > 0 && (
         <div className="bg-card rounded-lg p-4 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">All Security Findings</h2>
+            <h2 className="text-lg font-semibold">{t("security.allFindings")}</h2>
           </div>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
             <table className="w-full text-sm">

@@ -8,6 +8,7 @@ import {
   getGradeColor,
 } from "@/lib/formatters";
 import { Users, CheckCircle, XCircle, BarChart3 } from "lucide-react";
+import { useT } from "@/lib/i18n";
 import {
   BarChart,
   Bar,
@@ -28,6 +29,7 @@ type DrillStatus = "pass" | "fail" | "all";
 type Drilldown = { author: string; status: DrillStatus } | null;
 
 export default function TeamPage() {
+  const t = useT();
   const [data, setData] = useState<TeamHealthOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -107,13 +109,13 @@ export default function TeamPage() {
 
   const kpiCards = [
     {
-      label: "Total Scans",
+      label: t("team.totalScans"),
       value: data.total_scans.toString(),
       icon: BarChart3,
       color: "border-blue-500",
     },
     {
-      label: "Pass Rate",
+      label: t("team.passRate"),
       value: formatPercentage(data.pass_rate),
       icon: CheckCircle,
       color:
@@ -124,13 +126,13 @@ export default function TeamPage() {
             : "border-red-500",
     },
     {
-      label: "Failing PRs",
+      label: t("team.failingPrs"),
       value: data.failing_prs.toString(),
       icon: XCircle,
       color: data.failing_prs === 0 ? "border-green-500" : "border-red-500",
     },
     {
-      label: "Active Authors",
+      label: t("team.activeAuthors"),
       value: data.active_authors.toString(),
       icon: Users,
       color: "border-purple-500",
@@ -141,9 +143,9 @@ export default function TeamPage() {
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">Team Health</h1>
+        <h1 className="text-2xl font-bold">{t("team.title")}</h1>
         <p className="text-muted-foreground text-sm mt-0.5">
-          Contributor metrics and team-wide quality trends
+          {t("team.subtitle")}
         </p>
       </div>
 
@@ -427,7 +429,7 @@ export default function TeamPage() {
 
       {/* Contributor Table */}
       <div className="bg-card rounded-lg p-4 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4">Contributors</h2>
+        <h2 className="text-lg font-semibold mb-4">{t("team.contributors")}</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -515,7 +517,7 @@ export default function TeamPage() {
 
       {/* Recent Scans Table */}
       <div className="bg-card rounded-lg p-4 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4">Recent Scans</h2>
+        <h2 className="text-lg font-semibold mb-4">{t("team.recentScans")}</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

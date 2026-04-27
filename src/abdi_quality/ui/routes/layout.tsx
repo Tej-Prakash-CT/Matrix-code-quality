@@ -11,17 +11,19 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { hasAdminToken } from "@/lib/api";
-
-const navItems = [
-  { to: "/", label: "Home", icon: Home, end: true },
-  { to: "/overview", label: "Overview", icon: LayoutDashboard },
-  { to: "/team", label: "Team Health", icon: Users },
-  { to: "/trends", label: "Trends", icon: TrendingUp },
-  { to: "/security", label: "Security", icon: Shield },
-];
+import { useT } from "@/lib/i18n";
+import { DownloadReportButton } from "@/components/ui/download-report-button";
 
 export function SidebarLayout() {
   const location = useLocation();
+  const t = useT();
+  const navItems = [
+    { to: "/", labelKey: "nav.home", icon: Home, end: true },
+    { to: "/overview", labelKey: "nav.overview", icon: LayoutDashboard },
+    { to: "/team", labelKey: "nav.team", icon: Users },
+    { to: "/trends", labelKey: "nav.trends", icon: TrendingUp },
+    { to: "/security", labelKey: "nav.security", icon: Shield },
+  ];
   const [dark, setDark] = useState(() => {
     if (typeof window !== "undefined") {
       return window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -46,12 +48,12 @@ export function SidebarLayout() {
         <div className="mb-6">
           <h1 className="text-xl font-bold tracking-tight">MATRIX</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Code Quality Platform
+            {t("app.subtitle")}
           </p>
         </div>
 
         <nav className="flex-1 space-y-1">
-          {navItems.map(({ to, label, icon: Icon, end }) => (
+          {navItems.map(({ to, labelKey, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -65,7 +67,7 @@ export function SidebarLayout() {
               }
             >
               <Icon size={16} />
-              {label}
+              {t(labelKey)}
             </NavLink>
           ))}
           {isAdmin && (
@@ -80,18 +82,22 @@ export function SidebarLayout() {
               }
             >
               <Settings size={16} />
-              Admin
+              {t("nav.admin")}
             </NavLink>
           )}
         </nav>
 
-        <button
-          onClick={() => setDark((d) => !d)}
-          className="mt-auto flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-        >
-          {dark ? <Sun size={16} /> : <Moon size={16} />}
-          {dark ? "Light Mode" : "Dark Mode"}
-        </button>
+        {/* Bottom controls: download report, theme */}
+        <div className="mt-auto pt-2 border-t border-border space-y-1">
+          <DownloadReportButton source={{ kind: "dashboard" }} />
+          <button
+            onClick={() => setDark((d) => !d)}
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          >
+            {dark ? <Sun size={16} /> : <Moon size={16} />}
+            {dark ? t("ui.lightMode") : t("ui.darkMode")}
+          </button>
+        </div>
       </aside>
 
       {/* Main content */}

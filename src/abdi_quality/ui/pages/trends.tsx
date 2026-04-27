@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { api, type TrendsOut, type TrendSeries } from "@/lib/api";
 import { formatDateShort } from "@/lib/formatters";
+import { useT } from "@/lib/i18n";
 import {
   LineChart,
   Line,
@@ -31,6 +32,7 @@ function getColorForMetric(metric: string): string {
 }
 
 export default function TrendsPage() {
+  const t = useT();
   const [data, setData] = useState<TrendsOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -128,9 +130,9 @@ export default function TrendsPage() {
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">Quality Trends</h1>
+        <h1 className="text-2xl font-bold">{t("trends.title")}</h1>
         <p className="text-muted-foreground text-sm mt-0.5">
-          Track code quality metrics across {data.scans_included} scans
+          {t("trends.subtitle", { n: data.scans_included })}
         </p>
       </div>
 
@@ -173,7 +175,7 @@ export default function TrendsPage() {
 
       {/* Multi-metric Line Chart */}
       <div className="bg-card rounded-lg p-4 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4">Metric Comparison</h2>
+        <h2 className="text-lg font-semibold mb-4">{t("trends.metricComparison")}</h2>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={mergedData} margin={{ left: 10, right: 10 }}>

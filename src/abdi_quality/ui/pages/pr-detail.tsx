@@ -13,6 +13,7 @@ import {
   getSeverityColor,
 } from "@/lib/formatters";
 import { Sparkline } from "@/components/charts/sparkline";
+import { DownloadReportButton } from "@/components/ui/download-report-button";
 import {
   ArrowUp,
   ArrowDown,
@@ -506,6 +507,10 @@ export default function PrDetailPage() {
           </Link>
 
           <div className="flex items-center gap-2">
+            <DownloadReportButton
+              variant="compact"
+              source={{ kind: "pr", prNumber: data.pr_number, prefetched: data }}
+            />
             <span className="text-xs text-muted-foreground">
               Currently viewing:
             </span>
