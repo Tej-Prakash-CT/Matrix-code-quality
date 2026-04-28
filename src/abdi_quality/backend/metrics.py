@@ -266,7 +266,7 @@ def compute_quality_grade_breakdown(
         ),
         GradeDimensionOut(
             name="Maintainability",
-            raw_value=f"Tech debt {td.grade.value} ({td.percentage:.1f}%)",
+            raw_value=f"Tech debt {td.grade.value} ({td.ratio_pct:.1f}%)",
             score=maint,
             weight=gw.maintainability,
             contribution=maint * gw.maintainability,
