@@ -31,11 +31,11 @@ const GRADE_COLORS: Record<string, string> = {
   E: "#ef4444",
 };
 const GRADE_LABELS: Record<string, { title: string; desc: string; range: string }> = {
-  A: { title: "Excellent", desc: "Meets all quality gates",         range: "Score ≥ 85" },
-  B: { title: "Good",      desc: "Minor issues, safe to ship",      range: "70 – 84"    },
-  C: { title: "Fair",      desc: "Noticeable issues, review advised", range: "55 – 69"  },
-  D: { title: "Poor",      desc: "Multiple failing checks",         range: "40 – 54"    },
-  E: { title: "Critical",  desc: "Blocking issues, needs rework",   range: "< 40"       },
+  A: { title: "Excellent", desc: "Meets all quality gates",           range: "95 – 100" },
+  B: { title: "Good",      desc: "Minor issues, safe to ship",        range: "85 – 94"  },
+  C: { title: "Fair",      desc: "Noticeable issues, review advised", range: "70 – 84"  },
+  D: { title: "Poor",      desc: "Multiple failing checks",           range: "50 – 69"  },
+  E: { title: "Critical",  desc: "Blocking issues, needs rework",     range: "< 50"     },
 };
 
 /** Six dimensions of the weighted grade score. Weights mirror
@@ -300,7 +300,7 @@ export default function OverviewPage() {
           <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div className="p-2 rounded-md bg-secondary/40 border border-border/50">
               <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                Total PRs
+                Total Scans
               </div>
               <div className="text-lg font-semibold leading-tight">
                 {recentTotal}

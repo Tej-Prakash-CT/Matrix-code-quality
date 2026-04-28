@@ -215,13 +215,13 @@ def compute_quality_grade(report: dict, cfg: AdminConfig | None = None) -> Quali
         + _ruff_score(report) * gw.ruff
     )
 
-    if weighted >= 85:
+    if weighted >= 95:
         return QualityGrade.A
-    if weighted >= 70:
+    if weighted >= 85:
         return QualityGrade.B
-    if weighted >= 55:
+    if weighted >= 70:
         return QualityGrade.C
-    if weighted >= 40:
+    if weighted >= 50:
         return QualityGrade.D
     return QualityGrade.E
 

@@ -153,7 +153,7 @@ const en: Dict = {
 
   // New report content
   "report.gradeDistExplainer":
-    "Counts of PRs by quality letter grade (A best, E worst) across all {n} scans in the system. Each grade is a weighted score across 6 dimensions; see the dashboard for the full breakdown.",
+    "Counts of scans by quality letter grade (A best, E worst) across all {n} scans in the system. Each grade is a weighted score across 6 dimensions; see the dashboard for the full breakdown.",
   "report.scanners.intro":
     "The platform runs the scanners below on every PR. Each tool covers a specific quality dimension — linting, security, bugs, secrets, and duplication.",
   "report.benchmarks.intro":
@@ -308,7 +308,7 @@ const ja: Dict = {
 
   // New report content
   "report.gradeDistExplainer":
-    "システム内の全 {n} 件のスキャンを対象に、品質レターグレード (A が最良、E が最悪) ごとの PR 数を集計しています。各グレードは 6 つの観点による加重スコアで決まります。詳細はダッシュボードを参照してください。",
+    "システム内の全 {n} 件のスキャンを対象に、品質レターグレード (A が最良、E が最悪) ごとのスキャン数を集計しています。各グレードは 6 つの観点による加重スコアで決まります。詳細はダッシュボードを参照してください。",
   "report.scanners.intro":
     "PR ごとに以下のスキャナーが実行されます。各ツールは品質の特定領域 (リンティング、セキュリティ、バグ、シークレット、重複) を担当します。",
   "report.benchmarks.intro":

@@ -614,6 +614,21 @@ const BENCHMARKS: BenchmarkRow[] = [
     ourThreshold: { en: "Danger ≥ 0", ja: "要対応 ≥ 0" },
     industry: { en: "Internal — keep at 0 for clean PRs", ja: "社内基準 — クリーン PR では 0 を維持" },
   },
+  {
+    // No backing kpi_card — current value column will render "—" but the row
+    // documents how the weighted grade maps to letter grades for readers.
+    labels: ["Quality Grade"],
+    metric: { en: "Quality Grade Distribution", ja: "品質グレード分布" },
+    tool: "Weighted",
+    ourThreshold: {
+      en: "A ≥ 95, B ≥ 85, C ≥ 70, D ≥ 50, E < 50",
+      ja: "A ≥ 95、B ≥ 85、C ≥ 70、D ≥ 50、E < 50",
+    },
+    industry: {
+      en: "A: Excellent · B: Good · C: Fair · D: Poor · E: Critical (weighted across reliability, security, maintainability, duplication, hotspots)",
+      ja: "A: 優秀・B: 良好・C: 普通・D: 不良・E: 重大（信頼性、セキュリティ、保守性、重複、ホットスポットの加重平均）",
+    },
+  },
 ];
 
 function renderBenchmarks(ctx: BuildContext, overview: OverviewOut): string {
