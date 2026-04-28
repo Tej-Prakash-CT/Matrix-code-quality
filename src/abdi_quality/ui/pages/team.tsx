@@ -435,7 +435,7 @@ export default function TeamPage() {
             <thead>
               <tr className="border-b border-border text-left text-muted-foreground">
                 <th className="pb-2 font-medium">Author</th>
-                <th className="pb-2 font-medium text-right">PRs</th>
+                <th className="pb-2 font-medium text-right">Scans</th>
                 <th className="pb-2 font-medium text-right">Pass Rate</th>
                 <th className="pb-2 font-medium text-right">Bugs</th>
                 <th className="pb-2 font-medium text-right">Security</th>

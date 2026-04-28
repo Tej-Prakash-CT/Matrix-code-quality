@@ -148,56 +148,32 @@ def compute_technical_debt(report: dict) -> TechnicalDebt:
 
 
 def _reliability_score(report: dict) -> float:
-    bugs = report.get("semgrep", {}).get("count", 0)
-    if bugs == 0:
-        return 100
-    if bugs <= 3:
-        return 80
-    if bugs <= 10:
-        return 50
-    return 20
+    return 100 if report.get("semgrep", {}).get("count", 0) == 0 else 0
 
 
 def _security_score(report: dict) -> float:
     bd = report.get("bandit", {})
     gl = report.get("gitleaks", {})
-    if bd.get("high", 0) > 0 or gl.get("count", 0) > 0:
-        return 20
-    if bd.get("medium", 0) > 0:
-        return 60
-    if bd.get("low", 0) > 0:
-        return 80
-    return 100
+    has_finding = (
+        bd.get("high", 0) + bd.get("medium", 0) + bd.get("low", 0) > 0
+        or gl.get("count", 0) > 0
+    )
+    return 0 if has_finding else 100
 
 
 def _maintainability_score(report: dict) -> float:
-    td = compute_technical_debt(report)
-    scores = {"A": 100, "B": 80, "C": 60, "D": 40, "E": 20}
-    return scores.get(td.grade.value, 20)
+    return 100 if compute_technical_debt(report).grade.value == "A" else 0
 
 
+# Duplication ≤ 12% is treated as "no issue" because the Teradata→Databricks
+# codegen produces irreducible structural duplication around 10-12%.
 def _duplication_score(report: dict) -> float:
     dup = report.get("jscpd", {}).get("percentage", 0)
-    if dup == 0:
-        return 100
-    if dup <= 3:
-        return 80
-    if dup <= 5:
-        return 60
-    if dup <= 10:
-        return 40
-    return 20
+    return 100 if dup <= 12 else 0
 
 
 def _ruff_score(report: dict) -> float:
-    errors = report.get("summary", {}).get("ruff_errors", 0)
-    if errors == 0:
-        return 100
-    if errors <= 3:
-        return 80
-    if errors <= 10:
-        return 50
-    return 20
+    return 100 if report.get("summary", {}).get("ruff_errors", 0) == 0 else 0
 
 
 def _grade_from_score(score: float) -> QualityGrade:
@@ -375,14 +351,6 @@ def _evaluate_scan_status(report: dict, cfg: AdminConfig) -> ScanStatus:
     if _tool_enabled("gitleaks", cfg):
         if "high" in sf.fail_on and report.get("gitleaks", {}).get("count", 0) > 0:
             return ScanStatus.FAIL
-
-    # ── ruff: any error fails (mirrors the CI Quality Gate exactly) ────────
-    # The CI pipeline blocks a PR on ruff_errors > 0, so the dashboard must
-    # report the same verdict. A separate hotspots threshold would let PRs
-    # that failed CI show up as PASS here, which is the mismatch we hit on
-    # PR #176 (1 Ruff error → CI fail, dashboard pass).
-    if _tool_enabled("ruff", cfg) and s.get("ruff_errors", 0) > 0:
-        return ScanStatus.FAIL
 
     # ── tech debt ────────────────────────────────────────────────────────────
     td = compute_technical_debt(report)

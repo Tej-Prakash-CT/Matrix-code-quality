@@ -40,12 +40,12 @@
     "tech_debt_ratio_danger_pct": 50.0
   },
   "grade_weights": {
-    "reliability": 0.3,
-    "security": 0.3,
-    "maintainability": 0.25,
+    "reliability": 0.20,
+    "security": 0.20,
+    "maintainability": 0.20,
     "coverage": 0.0,
-    "duplication": 0.15,
-    "ruff": 0.0
+    "duplication": 0.20,
+    "ruff": 0.20
   },
   "severity_filter": {
     "min_severity": [

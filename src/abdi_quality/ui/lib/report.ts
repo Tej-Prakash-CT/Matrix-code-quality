@@ -656,7 +656,7 @@ const BENCHMARKS: BenchmarkRow[] = [
     metric: { en: "Hotspots (Ruff errors)", ja: "ホットスポット (Ruff エラー)" },
     tool: "Ruff",
     ourThreshold: { en: "Danger ≥ 0", ja: "要対応 ≥ 0" },
-    industry: { en: "Internal — keep at 0 for clean PRs", ja: "社内基準 — クリーン PR では 0 を維持" },
+    industry: { en: "Internal — keep at 0 for clean scans", ja: "社内基準 — クリーンなスキャンでは 0 を維持" },
   },
   {
     // No backing kpi_card — current value column will render "—" but the row
@@ -665,8 +665,8 @@ const BENCHMARKS: BenchmarkRow[] = [
     metric: { en: "Quality Grade Distribution", ja: "品質グレード分布" },
     tool: "Weighted",
     ourThreshold: {
-      en: "A ≥ 95, B ≥ 85, C ≥ 70, D ≥ 50, E < 50 · failing PRs floored at D",
-      ja: "A ≥ 95、B ≥ 85、C ≥ 70、D ≥ 50、E < 50 ・ 失敗 PR は最高 D",
+      en: "A ≥ 95, B ≥ 85, C ≥ 70, D ≥ 50, E < 50 · failing scans floored at D",
+      ja: "A ≥ 95、B ≥ 85、C ≥ 70、D ≥ 50、E < 50 ・ 失敗スキャンは最高 D",
     },
     industry: {
       en: "A: Excellent · B: Good · C: Fair · D: Poor · E: Critical (weighted across reliability, security, maintainability, duplication, hotspots)",
@@ -856,8 +856,8 @@ function renderPrSection(ctx: BuildContext, data: ScanDetailOut): string {
 
   return `
     <section class="page-break">
-      <h2>${t("report.section.prDetail")} — PR #${escapeHtml(data.pr_number)}</h2>
-      <h1 style="margin-top:8px">PR #${escapeHtml(data.pr_number)} — ${escapeHtml(data.pr_title || "")}</h1>
+      <h2>${t("report.section.prDetail")} — Scan #${escapeHtml(data.pr_number)}</h2>
+      <h1 style="margin-top:8px">Scan #${escapeHtml(data.pr_number)} — ${escapeHtml(data.pr_title || "")}</h1>
       <p class="muted">
         ${escapeHtml(data.pr_author)} · <span class="mono">${escapeHtml(data.branch)}</span> ·
         ${escapeHtml(data.commit_sha.slice(0, 8))} · ${escapeHtml(fmtDate(data.timestamp, lang))}
@@ -980,7 +980,7 @@ export function buildPrHtml(ctxData: PrReportContext, lang: Lang): string {
   const ctx: BuildContext = { lang, t };
   const data = ctxData.pr;
   const dashboard = ctxData.dashboard;
-  const subtitle = `PR #${data.pr_number} · ${data.pr_author}`;
+  const subtitle = `Scan #${data.pr_number} · ${data.pr_author}`;
 
   const tocItems = [
     ...(dashboard
@@ -1018,7 +1018,7 @@ export function buildPrHtml(ctxData: PrReportContext, lang: Lang): string {
      ${renderPrSection(ctx, data)}
      ${renderFooter(ctx)}`,
     lang,
-    `${t("report.title")} · PR #${data.pr_number}`,
+    `${t("report.title")} · Scan #${data.pr_number}`,
   );
 }
 

@@ -473,11 +473,12 @@ export default function OverviewPage() {
 
                 <p className="text-[11px] text-muted-foreground">
                   <strong>Heads-up:</strong> the letter grade and the CI
-                  pass/fail verdict are independent. A PR can earn grade
+                  pass/fail verdict are independent. A scan can earn grade
                   <span className="font-mono mx-1">A</span>
-                  and still be blocked by the CI Quality Gate (e.g. a single
-                  Ruff error) because the gate uses hard thresholds while the
-                  grade uses a weighted average.
+                  and still be blocked by the CI Quality Gate (e.g. a
+                  high-severity Bandit finding or a leaked secret) because the
+                  gate uses hard thresholds while the grade uses a weighted
+                  average.
                 </p>
               </div>
             )}
