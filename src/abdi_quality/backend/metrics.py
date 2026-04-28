@@ -561,16 +561,6 @@ def build_kpi_cards(report: dict, prev_report: dict | None, all_reports: list[di
             sparkline=_spark(_tool_enabled("gitleaks", cfg), lambda d: float(d.get("gitleaks", {}).get("count", 0))),
         ),
         KpiCard(
-            label="Validation Tests",
-            value=str(tests) if _tool_enabled("pytest", cfg) else "N/A",
-            raw_value=float(tests),
-            status="good",
-            tooltip="Framework validation tests (Pytest) that verify pipeline logic, transformations, and data quality rules."
-                    + (" [tool disabled]" if not _tool_enabled("pytest", cfg) else ""),
-            delta=compute_delta(float(tests), float(prev.get("pytest", {}).get("total", 0))) if prev else None,
-            sparkline=_spark(_tool_enabled("pytest", cfg), lambda d: float(d.get("pytest", {}).get("total", 0))),
-        ),
-        KpiCard(
             label="Tech Debt",
             value=td.grade.value,
             raw_value=td.ratio_pct,

@@ -65,6 +65,18 @@ table + h3 { margin-top: 18px; }
 .mono  { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
 .right { text-align: right; }
 
+/* Numeric / mono cells must never break or get auto-spaced. JP locale
+   browsers otherwise insert ideographic gaps between Latin punctuation
+   and digits, which is what produced the "11. 1%" rendering bug. */
+td.mono, td.right.mono, .kpi-value {
+  white-space: nowrap;
+  font-feature-settings: "palt" 0;
+  text-spacing-trim: space-all;
+}
+/* Keep table column headers on a single line so JP labels like ステータス
+   don't break mid-word when columns are tight. */
+th { white-space: nowrap; }
+
 .header {
   display: flex; align-items: center; justify-content: space-between;
   border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 14px;
@@ -102,6 +114,18 @@ table + h3 { margin-top: 18px; }
 .kpi.danger  { border-bottom-color: #ef4444; }
 .kpi-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
 .kpi-value { font-size: 18px; font-weight: 700; margin-top: 2px; }
+
+/* JP locale tweaks: uppercase + letter-spacing look broken on kanji, and
+   tighter padding/line-height claws back enough vertical space to keep the
+   report at the same page count as the EN version. */
+:lang(ja) .kpi-label { text-transform: none; letter-spacing: 0; }
+:lang(ja) body, :lang(ja) { line-height: 1.35; }
+:lang(ja) table { font-size: 9.5px; }
+:lang(ja) th, :lang(ja) td { padding: 3.5px 5px; }
+@media print {
+  :lang(ja) table { font-size: 8.5pt; }
+  :lang(ja) body { line-height: 1.3; }
+}
 
 table { width: 100%; border-collapse: collapse; font-size: 10px; }
 th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
@@ -265,13 +289,33 @@ function renderFooter(ctx: BuildContext): string {
   `;
 }
 
+// KPI cards arrive from the backend with hardcoded English labels (see
+// metrics.py build_kpi_cards). Translate them at render time so the JP
+// report doesn't show English tile labels alongside Japanese section
+// headers. Keys are matched case-insensitively against the canonical labels.
+const KPI_LABEL_JA: Record<string, string> = {
+  "code coverage": "カバレッジ",
+  "duplication": "重複率",
+  "bugs / kloc": "バグ / KLOC",
+  "vulns / kloc": "脆弱性 / KLOC",
+  "hotspots": "ホットスポット",
+  "secrets": "シークレット",
+  "validation tests": "検証テスト",
+  "tech debt": "技術的負債",
+};
+
+function localizeKpiLabel(label: string, lang: Lang): string {
+  if (lang !== "ja") return label;
+  return KPI_LABEL_JA[label.toLowerCase()] ?? label;
+}
+
 function renderOverviewSection(
   ctx: BuildContext,
   data: OverviewOut,
   allScans: ScanSummaryOut[],
   totalScansInSystem: number,
 ): string {
-  const { t } = ctx;
+  const { t, lang } = ctx;
   const visibleKpis = data.kpi_cards.filter(
     (k) => !k.label.toLowerCase().includes("coverage"),
   );
@@ -279,7 +323,7 @@ function renderOverviewSection(
     .map(
       (k) => `
       <div class="kpi ${escapeHtml(k.status)}">
-        <div class="kpi-label">${escapeHtml(k.label)}</div>
+        <div class="kpi-label">${escapeHtml(localizeKpiLabel(k.label, lang))}</div>
         <div class="kpi-value">${escapeHtml(k.value)}</div>
       </div>`,
     )
@@ -467,14 +511,14 @@ function renderSecuritySection(
       </table>
       <h3>${t("security.owaspCategories")}</h3>
       <table>
-        <thead><tr><th>ID</th><th>${t("security.owaspCategories")}</th><th class="right">Count</th></tr></thead>
+        <thead><tr><th>ID</th><th>${t("security.owaspCategories")}</th><th class="right">${escapeHtml(t("table.count"))}</th></tr></thead>
         <tbody>${owaspRows || `<tr><td colspan="3" class="muted">—</td></tr>`}</tbody>
       </table>
       ${
         recurringRows
-          ? `<h3>Top recurring violations</h3>
+          ? `<h3>${escapeHtml(t("security.topRecurring"))}</h3>
             <table>
-              <thead><tr><th>${t("table.rule")}</th><th>${t("table.severity")}</th><th>Tool</th><th class="right">Count</th></tr></thead>
+              <thead><tr><th>${t("table.rule")}</th><th>${t("table.severity")}</th><th>${escapeHtml(t("report.benchmarks.tool"))}</th><th class="right">${escapeHtml(t("table.count"))}</th></tr></thead>
               <tbody>${recurringRows}</tbody>
             </table>`
           : ""
@@ -546,7 +590,7 @@ function renderScannerStack(ctx: BuildContext): string {
           <tr>
             <th>${escapeHtml(t("report.benchmarks.tool"))}</th>
             <th>${escapeHtml(t("table.source"))}</th>
-            <th>Notes</th>
+            <th>${escapeHtml(t("table.notes"))}</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -764,7 +808,7 @@ function renderPrSection(ctx: BuildContext, data: ScanDetailOut): string {
     .map(
       (k) => `
       <div class="kpi ${escapeHtml(k.status)}">
-        <div class="kpi-label">${escapeHtml(k.label)}</div>
+        <div class="kpi-label">${escapeHtml(localizeKpiLabel(k.label, lang))}</div>
         <div class="kpi-value">${escapeHtml(k.value)}</div>
       </div>`,
     )
@@ -850,7 +894,7 @@ function renderPrSection(ctx: BuildContext, data: ScanDetailOut): string {
                 <tr>
                   <th>${t("table.file")} 1</th><th>${t("table.line")}</th>
                   <th>${t("table.file")} 2</th><th>${t("table.line")}</th>
-                  <th class="right">Size</th><th class="right">Tokens</th>
+                  <th class="right">${escapeHtml(t("table.size"))}</th><th class="right">${escapeHtml(t("table.tokens"))}</th>
                 </tr>
               </thead>
               <tbody>${dupRows}</tbody>

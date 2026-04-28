@@ -77,6 +77,7 @@ const en: Dict = {
   "security.banditDistribution": "Bandit Severity Distribution",
   "security.owaspDetails": "OWASP Category Details",
   "security.allFindings": "All Security Findings",
+  "security.topRecurring": "Top recurring violations",
 
   // PR detail
   "pr.backToOverview": "Back to overview",
@@ -119,6 +120,10 @@ const en: Dict = {
   "table.passCount": "Pass",
   "table.failCount": "Fail",
   "table.prCount": "PRs",
+  "table.count": "Count",
+  "table.notes": "Notes",
+  "table.size": "Size",
+  "table.tokens": "Tokens",
 
   // Status / grade / severity
   "status.pass": "PASS",
@@ -244,6 +249,7 @@ const ja: Dict = {
   "security.banditDistribution": "Bandit 深刻度分布",
   "security.owaspDetails": "OWASP カテゴリ詳細",
   "security.allFindings": "全セキュリティ検出結果",
+  "security.topRecurring": "頻出違反",
 
   // PR detail
   "pr.backToOverview": "概要に戻る",
@@ -271,8 +277,8 @@ const ja: Dict = {
   "table.pr": "PR",
   "table.author": "作者",
   "table.branch": "ブランチ",
-  "table.status": "ステータス",
-  "table.grade": "グレード",
+  "table.status": "状態",
+  "table.grade": "等級",
   "table.bugs": "バグ",
   "table.security": "セキュリティ",
   "table.date": "日付",
@@ -286,6 +292,10 @@ const ja: Dict = {
   "table.passCount": "合格",
   "table.failCount": "不合格",
   "table.prCount": "PR 数",
+  "table.count": "件数",
+  "table.notes": "備考",
+  "table.size": "サイズ",
+  "table.tokens": "トークン",
 
   // Status / grade / severity
   "status.pass": "合格",
