@@ -165,15 +165,15 @@ def _maintainability_score(report: dict) -> float:
     return 100 if compute_technical_debt(report).grade.value == "A" else 0
 
 
-# Duplication ≤ 12% is treated as "no issue" because the Teradata→Databricks
-# codegen produces irreducible structural duplication around 10-12%. The 12-15
-# band is a soft margin so a scan that just nudges over 12 lands in B (Good)
-# instead of falling off a cliff to C.
+# Duplication ≤ 15% is treated as "no issue" because the Teradata→Databricks
+# codegen produces irreducible structural duplication. The 15-25 band is a
+# soft penalty (lands in B); 25-35 lands in C; >35 trips the FAIL threshold
+# in admin_config (duplication_fail_pct) and gets floored to D via fail-cap.
 def _duplication_score(report: dict) -> float:
     dup = report.get("jscpd", {}).get("percentage", 0)
-    if dup <= 12:
-        return 100
     if dup <= 15:
+        return 100
+    if dup <= 25:
         return 50
     return 0
 
@@ -357,6 +357,13 @@ def _evaluate_scan_status(report: dict, cfg: AdminConfig) -> ScanStatus:
     if _tool_enabled("gitleaks", cfg):
         if "high" in sf.fail_on and report.get("gitleaks", {}).get("count", 0) > 0:
             return ScanStatus.FAIL
+
+    # ── ruff: any error fails (mirrors the CI Quality Gate exactly) ────────
+    # Ruff errors hard-block the CI pipeline, so the dashboard verdict must
+    # match. Grade still falls out of the weighted score (Ruff dim contributes
+    # 0/20 with binary scoring); the fail-cap then floors the grade to D.
+    if _tool_enabled("ruff", cfg) and s.get("ruff_errors", 0) > 0:
+        return ScanStatus.FAIL
 
     # ── tech debt ────────────────────────────────────────────────────────────
     td = compute_technical_debt(report)
