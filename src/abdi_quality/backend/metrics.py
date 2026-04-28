@@ -166,10 +166,16 @@ def _maintainability_score(report: dict) -> float:
 
 
 # Duplication ≤ 12% is treated as "no issue" because the Teradata→Databricks
-# codegen produces irreducible structural duplication around 10-12%.
+# codegen produces irreducible structural duplication around 10-12%. The 12-15
+# band is a soft margin so a scan that just nudges over 12 lands in B (Good)
+# instead of falling off a cliff to C.
 def _duplication_score(report: dict) -> float:
     dup = report.get("jscpd", {}).get("percentage", 0)
-    return 100 if dup <= 12 else 0
+    if dup <= 12:
+        return 100
+    if dup <= 15:
+        return 50
+    return 0
 
 
 def _ruff_score(report: dict) -> float:
