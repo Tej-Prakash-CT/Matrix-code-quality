@@ -280,7 +280,8 @@ export default function OverviewPage() {
               </h2>
               <p className="text-xs text-muted-foreground">
                 PRs by quality grade across all scans in the system &mdash; click a bar to
-                view PRs in that grade.
+                view PRs in that grade. Failing PRs are floored at grade D, so a
+                failing PR can never be Excellent or Good.
               </p>
             </div>
             {selectedGrade && (

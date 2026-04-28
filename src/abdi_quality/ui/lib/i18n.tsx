@@ -166,6 +166,18 @@ const en: Dict = {
   "report.benchmarks.statusGood": "Good",
   "report.benchmarks.statusWarning": "Warning",
   "report.benchmarks.statusDanger": "Danger",
+  "report.gradeBreakdown.title": "Grade Breakdown",
+  "report.gradeBreakdown.intro":
+    "Each dimension contributes score × weight. The sum maps to a letter grade (A ≥ 95, B ≥ 85, C ≥ 70, D ≥ 50, E < 50). Failing PRs are floored at grade {cap}, so a failing PR can never be Excellent or Good.",
+  "report.gradeBreakdown.dimension": "Dimension",
+  "report.gradeBreakdown.rawValue": "Raw value",
+  "report.gradeBreakdown.score": "Score",
+  "report.gradeBreakdown.weight": "Weight",
+  "report.gradeBreakdown.contribution": "Contribution",
+  "report.gradeBreakdown.weightedTotal": "Weighted total",
+  "report.gradeBreakdown.failCapTitle": "Fail cap applied",
+  "report.gradeBreakdown.failCapBody":
+    "Weighted score is {total} (would be grade {base}), but this PR is failing — grade floored to {cap}.",
 };
 
 const ja: Dict = {
@@ -321,6 +333,18 @@ const ja: Dict = {
   "report.benchmarks.statusGood": "良好",
   "report.benchmarks.statusWarning": "警告",
   "report.benchmarks.statusDanger": "要対応",
+  "report.gradeBreakdown.title": "グレード内訳",
+  "report.gradeBreakdown.intro":
+    "各観点はスコア × 重みで寄与します。合計値はレターグレードに変換されます（A ≥ 95、B ≥ 85、C ≥ 70、D ≥ 50、E < 50）。失敗 PR は最高でもグレード {cap} に制限されます — 失敗 PR が「優秀」や「良好」と表示されることはありません。",
+  "report.gradeBreakdown.dimension": "観点",
+  "report.gradeBreakdown.rawValue": "実値",
+  "report.gradeBreakdown.score": "スコア",
+  "report.gradeBreakdown.weight": "重み",
+  "report.gradeBreakdown.contribution": "寄与",
+  "report.gradeBreakdown.weightedTotal": "加重合計",
+  "report.gradeBreakdown.failCapTitle": "失敗キャップ適用",
+  "report.gradeBreakdown.failCapBody":
+    "加重スコアは {total} （本来は グレード {base}）ですが、この PR は失敗のため、グレードを {cap} に制限しました。",
 };
 
 const DICTS: Record<Lang, Dict> = { en, ja };

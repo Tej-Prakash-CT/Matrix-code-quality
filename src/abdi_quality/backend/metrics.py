@@ -200,30 +200,136 @@ def _ruff_score(report: dict) -> float:
     return 20
 
 
-def compute_quality_grade(report: dict, cfg: AdminConfig | None = None) -> QualityGrade:
-    if cfg is None:
-        cfg = load_config()
-    cov = report.get("coverage", {}).get("total_pct", 0)
-    gw = cfg.grade_weights
-
-    weighted = (
-        _reliability_score(report) * gw.reliability
-        + _security_score(report) * gw.security
-        + _maintainability_score(report) * gw.maintainability
-        + min(cov, 100) * gw.coverage
-        + _duplication_score(report) * gw.duplication
-        + _ruff_score(report) * gw.ruff
-    )
-
-    if weighted >= 95:
+def _grade_from_score(score: float) -> QualityGrade:
+    if score >= 95:
         return QualityGrade.A
-    if weighted >= 85:
+    if score >= 85:
         return QualityGrade.B
-    if weighted >= 70:
+    if score >= 70:
         return QualityGrade.C
-    if weighted >= 50:
+    if score >= 50:
         return QualityGrade.D
     return QualityGrade.E
+
+
+# Failing PRs are floored at this grade regardless of weighted score, so a
+# non-technical reader never sees a failing PR labelled "Excellent" / "Good".
+FAIL_GRADE_CAP: QualityGrade = QualityGrade.D
+
+
+def compute_quality_grade_breakdown(
+    report: dict,
+    status: ScanStatus,
+    cfg: AdminConfig | None = None,
+) -> "GradeBreakdownOut":
+    """Per-dimension breakdown of the weighted grade, including the fail-cap.
+    Returned on /scans/{pr} so the UI can show *why* a PR landed in a grade.
+    """
+    from .models import GradeBreakdownOut, GradeDimensionOut  # avoid circular
+
+    if cfg is None:
+        cfg = load_config()
+    gw = cfg.grade_weights
+
+    cov_pct = report.get("coverage", {}).get("total_pct", 0)
+    cov_score = min(cov_pct, 100)
+    bugs = report.get("semgrep", {}).get("count", 0)
+    bd = report.get("bandit", {})
+    gl = report.get("gitleaks", {})
+    td = compute_technical_debt(report)
+    dup_pct = report.get("jscpd", {}).get("percentage", 0)
+    ruff_errs = report.get("summary", {}).get("ruff_errors", 0)
+
+    rel = _reliability_score(report)
+    sec = _security_score(report)
+    maint = _maintainability_score(report)
+    dupl = _duplication_score(report)
+    ruff = _ruff_score(report)
+
+    dims = [
+        GradeDimensionOut(
+            name="Reliability",
+            raw_value=f"{bugs} Semgrep bug(s)",
+            score=rel,
+            weight=gw.reliability,
+            contribution=rel * gw.reliability,
+        ),
+        GradeDimensionOut(
+            name="Security",
+            raw_value=(
+                f"{bd.get('high', 0)} high · {bd.get('medium', 0)} medium · "
+                f"{bd.get('low', 0)} low Bandit + {gl.get('count', 0)} secret(s)"
+            ),
+            score=sec,
+            weight=gw.security,
+            contribution=sec * gw.security,
+        ),
+        GradeDimensionOut(
+            name="Maintainability",
+            raw_value=f"Tech debt {td.grade.value} ({td.percentage:.1f}%)",
+            score=maint,
+            weight=gw.maintainability,
+            contribution=maint * gw.maintainability,
+        ),
+        GradeDimensionOut(
+            name="Coverage",
+            raw_value=f"{cov_pct:.1f}%",
+            score=cov_score,
+            weight=gw.coverage,
+            contribution=cov_score * gw.coverage,
+        ),
+        GradeDimensionOut(
+            name="Duplication",
+            raw_value=f"{dup_pct:.1f}%",
+            score=dupl,
+            weight=gw.duplication,
+            contribution=dupl * gw.duplication,
+        ),
+        GradeDimensionOut(
+            name="Ruff",
+            raw_value=f"{ruff_errs} error(s)",
+            score=ruff,
+            weight=gw.ruff,
+            contribution=ruff * gw.ruff,
+        ),
+    ]
+
+    weighted = sum(d.contribution for d in dims)
+    base_grade = _grade_from_score(weighted)
+
+    # Floor failing PRs to the cap grade so a non-tech reader never sees a
+    # failing PR with an A/B label.
+    fail_cap_applied = False
+    final_grade = base_grade
+    if status == ScanStatus.FAIL:
+        order = ["A", "B", "C", "D", "E"]
+        if order.index(base_grade.value) < order.index(FAIL_GRADE_CAP.value):
+            final_grade = FAIL_GRADE_CAP
+            fail_cap_applied = True
+
+    return GradeBreakdownOut(
+        dimensions=dims,
+        weighted_total=weighted,
+        base_grade=base_grade,
+        final_grade=final_grade,
+        fail_cap_applied=fail_cap_applied,
+        cap_grade=FAIL_GRADE_CAP,
+    )
+
+
+def compute_quality_grade(
+    report: dict,
+    cfg: AdminConfig | None = None,
+    status: ScanStatus | None = None,
+) -> QualityGrade:
+    """Letter grade for a PR. Pass `status` (pre-computed) to apply the
+    fail-cap; if omitted, status is recomputed from current admin thresholds.
+    """
+    if cfg is None:
+        cfg = load_config()
+    if status is None:
+        status = _evaluate_scan_status(report, cfg)
+    return compute_quality_grade_breakdown(report, status, cfg).final_grade
 
 
 def _evaluate_scan_status(report: dict, cfg: AdminConfig) -> ScanStatus:
@@ -510,7 +616,7 @@ def build_scan_summary(entry: dict, report: dict, cfg: AdminConfig | None = None
         hotspots=pylint_errors + s.get("ruff_errors", 0),
         duplication=report.get("jscpd", {}).get("percentage", 0),
         tests_total=report.get("pytest", {}).get("total", 0),
-        quality_grade=compute_quality_grade(report, cfg),
+        quality_grade=compute_quality_grade(report, cfg, status=live_status),
         bugs_per_kloc=bugs_per_kloc(report, cfg),
         vulns_per_kloc=vulns_per_kloc(report, cfg),
     )
@@ -596,6 +702,9 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
     else:
         hidden_bandit = 0
 
+    live_status = _evaluate_scan_status(report, cfg)
+    breakdown = compute_quality_grade_breakdown(report, live_status, cfg)
+
     return ScanDetailOut(
         pr_number=str(report.get("pr_number", "")),
         pr_title=report.get("pr_title", ""),
@@ -605,8 +714,9 @@ def build_scan_detail(report: dict, prev_report: dict | None, all_reports: list[
         commit_sha=str(report.get("commit_sha", "")),
         repo=report.get("repo", ""),
         timestamp=report.get("timestamp", ""),
-        status=_evaluate_scan_status(report, cfg),
-        quality_grade=compute_quality_grade(report, cfg),
+        status=live_status,
+        quality_grade=breakdown.final_grade,
+        grade_breakdown=breakdown,
         technical_debt=compute_technical_debt(report),
         bugs_per_kloc=bugs_per_kloc(report, cfg),
         vulns_per_kloc=vulns_per_kloc(report, cfg),
@@ -908,7 +1018,7 @@ def build_overview(reports: list[dict]) -> OverviewOut:
     cfg = load_config()  # single load for consistency across all cards + summaries
     latest = reports[0]["data"]
     prev = reports[1]["data"] if len(reports) > 1 else None
-    grade = compute_quality_grade(latest, cfg)
+    grade = compute_quality_grade(latest, cfg, status=_evaluate_scan_status(latest, cfg))
     cards = build_kpi_cards(latest, prev, reports, cfg)
 
     recent = [build_scan_summary(e, e["data"], cfg) for e in reports[:10]]

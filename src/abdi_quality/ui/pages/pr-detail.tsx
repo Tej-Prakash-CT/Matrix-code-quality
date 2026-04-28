@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { api, type ScanDetailOut, type ScanSummaryOut, type ToolFinding } from "@/lib/api";
+import {
+  api,
+  type ScanDetailOut,
+  type ScanSummaryOut,
+  type ToolFinding,
+  type GradeBreakdownOut,
+} from "@/lib/api";
 import {
   formatDate,
   getGradeColor,
@@ -121,6 +127,94 @@ function CollapsibleSection({
         </span>
       </button>
       {open && <div className="border-t border-border p-4">{children}</div>}
+    </div>
+  );
+}
+
+function GradeBreakdownPanel({
+  breakdown,
+  status,
+}: {
+  breakdown: GradeBreakdownOut;
+  status: "pass" | "fail";
+}) {
+  const visible = breakdown.dimensions.filter((d) => d.weight > 0);
+  return (
+    <div className="bg-card rounded-lg p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
+        <div>
+          <h2 className="text-lg font-semibold">Grade Breakdown</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            How this PR's letter grade is calculated. Each dimension contributes
+            <span className="font-mono"> score × weight</span>; the sum maps to a
+            grade (A ≥ 95, B ≥ 85, C ≥ 70, D ≥ 50, E &lt; 50).
+            {" "}
+            <strong>Failing PRs are floored at grade {breakdown.cap_grade}</strong>
+            {" "}so a failing PR can never be labelled Excellent or Good.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 text-right">
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Weighted total
+            </div>
+            <div className="text-xl font-semibold font-mono">
+              {breakdown.weighted_total.toFixed(1)}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Grade
+            </div>
+            <div
+              className={`inline-flex items-center justify-center w-10 h-10 rounded-full text-white font-bold ${getGradeColor(breakdown.final_grade)}`}
+            >
+              {breakdown.final_grade}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-muted-foreground border-b border-border">
+              <th className="pb-2 font-medium">Dimension</th>
+              <th className="pb-2 font-medium">Raw value</th>
+              <th className="pb-2 font-medium text-right">Score</th>
+              <th className="pb-2 font-medium text-right">Weight</th>
+              <th className="pb-2 font-medium text-right">Contribution</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((d) => (
+              <tr key={d.name} className="border-b border-border/50">
+                <td className="py-2 font-medium">{d.name}</td>
+                <td className="py-2 text-muted-foreground">{d.raw_value}</td>
+                <td className="py-2 text-right font-mono">{d.score.toFixed(0)}</td>
+                <td className="py-2 text-right font-mono">{(d.weight * 100).toFixed(0)}%</td>
+                <td className="py-2 text-right font-mono">{d.contribution.toFixed(1)}</td>
+              </tr>
+            ))}
+            <tr className="font-semibold">
+              <td className="py-2" colSpan={4}>
+                Weighted total
+              </td>
+              <td className="py-2 text-right font-mono">
+                {breakdown.weighted_total.toFixed(1)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {breakdown.fail_cap_applied && (
+        <div className="mt-3 text-xs rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 px-3 py-2">
+          <strong>Fail cap applied:</strong> weighted score is{" "}
+          <span className="font-mono">{breakdown.weighted_total.toFixed(1)}</span>
+          {" "}(would be grade {breakdown.base_grade}), but this PR is{" "}
+          <span className="font-semibold">{status.toUpperCase()}</span>, so the grade
+          is floored to {breakdown.cap_grade}.
+        </div>
+      )}
     </div>
   );
 }
@@ -621,6 +715,13 @@ export default function PrDetailPage() {
           </p>
         </div>
       </div>
+
+      {/* Grade Breakdown \u2014 shows the math behind the letter grade so a
+          non-tech reader can answer "why is this PR in grade X?". Hidden if
+          the backend hasn't shipped breakdown data yet (older deployments). */}
+      {data.grade_breakdown && (
+        <GradeBreakdownPanel breakdown={data.grade_breakdown} status={data.status} />
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

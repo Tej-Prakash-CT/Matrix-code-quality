@@ -621,8 +621,8 @@ const BENCHMARKS: BenchmarkRow[] = [
     metric: { en: "Quality Grade Distribution", ja: "品質グレード分布" },
     tool: "Weighted",
     ourThreshold: {
-      en: "A ≥ 95, B ≥ 85, C ≥ 70, D ≥ 50, E < 50",
-      ja: "A ≥ 95、B ≥ 85、C ≥ 70、D ≥ 50、E < 50",
+      en: "A ≥ 95, B ≥ 85, C ≥ 70, D ≥ 50, E < 50 · failing PRs floored at D",
+      ja: "A ≥ 95、B ≥ 85、C ≥ 70、D ≥ 50、E < 50 ・ 失敗 PR は最高 D",
     },
     industry: {
       en: "A: Excellent · B: Good · C: Fair · D: Poor · E: Critical (weighted across reliability, security, maintainability, duplication, hotspots)",
@@ -705,6 +705,56 @@ function renderBenchmarks(ctx: BuildContext, overview: OverviewOut): string {
   `;
 }
 
+function renderGradeBreakdown(ctx: BuildContext, data: ScanDetailOut): string {
+  const { t } = ctx;
+  const b = data.grade_breakdown;
+  if (!b) return "";
+  const visible = b.dimensions.filter((d) => d.weight > 0);
+  const rows = visible
+    .map(
+      (d) => `
+      <tr>
+        <td><strong>${escapeHtml(d.name)}</strong></td>
+        <td>${escapeHtml(d.raw_value)}</td>
+        <td class="right mono">${d.score.toFixed(0)}</td>
+        <td class="right mono">${(d.weight * 100).toFixed(0)}%</td>
+        <td class="right mono">${d.contribution.toFixed(1)}</td>
+      </tr>`,
+    )
+    .join("");
+  const cap = b.fail_cap_applied
+    ? `<p class="callout small"><strong>${escapeHtml(t("report.gradeBreakdown.failCapTitle"))}:</strong>
+         ${escapeHtml(t("report.gradeBreakdown.failCapBody", {
+           total: b.weighted_total.toFixed(1),
+           base: b.base_grade,
+           cap: b.cap_grade,
+         }))}</p>`
+    : "";
+  return `
+    <h3>${escapeHtml(t("report.gradeBreakdown.title"))}</h3>
+    <p class="muted small">${escapeHtml(t("report.gradeBreakdown.intro", { cap: b.cap_grade }))}</p>
+    <table>
+      <thead>
+        <tr>
+          <th>${escapeHtml(t("report.gradeBreakdown.dimension"))}</th>
+          <th>${escapeHtml(t("report.gradeBreakdown.rawValue"))}</th>
+          <th class="right">${escapeHtml(t("report.gradeBreakdown.score"))}</th>
+          <th class="right">${escapeHtml(t("report.gradeBreakdown.weight"))}</th>
+          <th class="right">${escapeHtml(t("report.gradeBreakdown.contribution"))}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+        <tr>
+          <td colspan="4"><strong>${escapeHtml(t("report.gradeBreakdown.weightedTotal"))}</strong></td>
+          <td class="right mono"><strong>${b.weighted_total.toFixed(1)}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    ${cap}
+  `;
+}
+
 function renderPrSection(ctx: BuildContext, data: ScanDetailOut): string {
   const { t, lang } = ctx;
   const visibleKpis = data.kpi_cards.filter(
@@ -777,6 +827,7 @@ function renderPrSection(ctx: BuildContext, data: ScanDetailOut): string {
       </div>
       <div class="kpi-grid">${kpis}</div>
       ${debt}
+      ${renderGradeBreakdown(ctx, data)}
 
       <h3>${t("findings.ruff")}</h3>
       ${findingsTable(data.ruff_findings, t)}

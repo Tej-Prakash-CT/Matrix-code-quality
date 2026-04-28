@@ -146,6 +146,27 @@ class RecurringViolation(BaseModel):
 
 
 # --- Detail view (ScanDetailOut) ---
+class GradeDimensionOut(BaseModel):
+    """One row of the per-PR grade breakdown — one of the 6 weighted dimensions.
+    `contribution` = score × weight; the final grade is computed from the sum
+    of all contributions, then optionally floored at `cap_grade` if the PR fails.
+    """
+    name: str
+    raw_value: str
+    score: float
+    weight: float
+    contribution: float
+
+
+class GradeBreakdownOut(BaseModel):
+    dimensions: list[GradeDimensionOut]
+    weighted_total: float
+    base_grade: QualityGrade
+    final_grade: QualityGrade
+    fail_cap_applied: bool
+    cap_grade: QualityGrade
+
+
 class ScanDetailOut(BaseModel):
     pr_number: str
     pr_title: str
@@ -157,6 +178,7 @@ class ScanDetailOut(BaseModel):
     timestamp: str
     status: ScanStatus
     quality_grade: QualityGrade
+    grade_breakdown: GradeBreakdownOut | None = None
     technical_debt: TechnicalDebt
     bugs_per_kloc: float | None = None
     vulns_per_kloc: float | None = None

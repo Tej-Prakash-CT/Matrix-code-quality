@@ -169,6 +169,23 @@ export interface RecurringViolation {
   severity: string;
 }
 
+export interface GradeDimensionOut {
+  name: string;
+  raw_value: string;
+  score: number;
+  weight: number;
+  contribution: number;
+}
+
+export interface GradeBreakdownOut {
+  dimensions: GradeDimensionOut[];
+  weighted_total: number;
+  base_grade: string;
+  final_grade: string;
+  fail_cap_applied: boolean;
+  cap_grade: string;
+}
+
 export interface ScanDetailOut {
   pr_number: string;
   pr_title: string;
@@ -180,6 +197,7 @@ export interface ScanDetailOut {
   timestamp: string;
   status: "pass" | "fail";
   quality_grade: string;
+  grade_breakdown: GradeBreakdownOut | null;
   technical_debt: TechnicalDebt;
   bugs_per_kloc: number | null;
   vulns_per_kloc: number | null;
