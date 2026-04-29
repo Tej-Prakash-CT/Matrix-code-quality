@@ -349,7 +349,7 @@ function renderOverviewSection(
     .join("");
 
   return `
-    <section>
+    <section class="page-break">
       <h2>${t("report.section.overview")}</h2>
       <div class="summary">
         <div class="grade-badge ${gradeClass(data.quality_grade)}">${escapeHtml(data.quality_grade)}</div>
