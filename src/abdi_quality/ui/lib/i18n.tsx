@@ -57,7 +57,7 @@ const en: Dict = {
   "team.totalScans": "Total Scans",
   "team.passRate": "Pass Rate",
   "team.failingPrs": "Failing Scans",
-  "team.activeAuthors": "Active Authors",
+  "team.activeAuthors": "Active Engineers",
   "team.contributors": "Contributors",
   "team.recentScans": "Recent Scans",
 
@@ -103,7 +103,7 @@ const en: Dict = {
 
   // Tables
   "table.pr": "Scan",
-  "table.author": "Author",
+  "table.author": "Engineer",
   "table.branch": "Branch",
   "table.status": "Status",
   "table.grade": "Grade",
@@ -229,7 +229,7 @@ const ja: Dict = {
   "team.totalScans": "スキャン合計",
   "team.passRate": "合格率",
   "team.failingPrs": "不合格スキャン",
-  "team.activeAuthors": "アクティブ作者",
+  "team.activeAuthors": "アクティブエンジニア",
   "team.contributors": "コントリビューター",
   "team.recentScans": "最近のスキャン",
 
@@ -244,7 +244,7 @@ const ja: Dict = {
     "脆弱性分析、シークレット検出、および OWASP カテゴリ分類",
   "security.totalVulns": "脆弱性合計",
   "security.totalSecrets": "シークレット合計",
-  "security.highSeverity": "高深刻度",
+  "security.highSeverity": "重大度：高",
   "security.owaspCategories": "OWASP カテゴリ",
   "security.banditDistribution": "Bandit 深刻度分布",
   "security.owaspDetails": "OWASP カテゴリ詳細",
@@ -275,7 +275,7 @@ const ja: Dict = {
 
   // Tables
   "table.pr": "スキャン",
-  "table.author": "作者",
+  "table.author": "エンジニア",
   "table.branch": "ブランチ",
   "table.status": "状態",
   "table.grade": "等級",
@@ -342,7 +342,7 @@ const ja: Dict = {
   "report.benchmarks.current": "現在値",
   "report.benchmarks.statusGood": "良好",
   "report.benchmarks.statusWarning": "警告",
-  "report.benchmarks.statusDanger": "要対応",
+  "report.benchmarks.statusDanger": "危険",
   "report.gradeBreakdown.title": "グレード内訳",
   "report.gradeBreakdown.intro":
     "各観点はスコア × 重みで寄与します。合計値はレターグレードに変換されます（A ≥ 95、B ≥ 85、C ≥ 70、D ≥ 50、E < 50）。失敗スキャンは最高でもグレード {cap} に制限されます — 失敗スキャンが「優秀」や「良好」と表示されることはありません。",

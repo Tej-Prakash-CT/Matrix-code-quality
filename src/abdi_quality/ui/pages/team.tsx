@@ -171,7 +171,7 @@ export default function TeamPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Pass/Fail by Author */}
         <div className="bg-card rounded-lg p-4 shadow-sm">
-          <h2 className="text-lg font-semibold mb-4">Pass / Fail by Author</h2>
+          <h2 className="text-lg font-semibold mb-4">Pass / Fail by Engineer</h2>
           <div className="h-96">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -276,12 +276,12 @@ export default function TeamPage() {
                       dataKey={r.author}
                       stroke={
                         ["#6366f1", "#14b8a6", "#f97316", "#ec4899", "#eab308"][
-                          i % 5
+                        i % 5
                         ]
                       }
                       fill={
                         ["#6366f1", "#14b8a6", "#f97316", "#ec4899", "#eab308"][
-                          i % 5
+                        i % 5
                         ]
                       }
                       fillOpacity={0.15}
@@ -318,15 +318,14 @@ export default function TeamPage() {
                     onClick={() =>
                       setDrilldown({ author: drilldown.author, status: s })
                     }
-                    className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
-                      drilldown.status === s
+                    className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${drilldown.status === s
                         ? s === "pass"
                           ? "bg-green-500 text-white border-transparent"
                           : s === "fail"
                             ? "bg-red-500 text-white border-transparent"
                             : "bg-primary text-primary-foreground border-transparent"
                         : "border-border text-muted-foreground hover:text-foreground"
-                    }`}
+                      }`}
                   >
                     {s === "all" ? "All" : s === "pass" ? "Pass" : "Fail"}
                   </button>

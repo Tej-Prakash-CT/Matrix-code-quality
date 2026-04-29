@@ -31,11 +31,11 @@ const GRADE_COLORS: Record<string, string> = {
   E: "#ef4444",
 };
 const GRADE_LABELS: Record<string, { title: string; desc: string; range: string }> = {
-  A: { title: "Excellent", desc: "Meets all quality gates",           range: "95 – 100" },
-  B: { title: "Good",      desc: "Minor issues, safe to ship",        range: "85 – 94"  },
-  C: { title: "Fair",      desc: "Noticeable issues, review advised", range: "70 – 84"  },
-  D: { title: "Poor",      desc: "Multiple failing checks",           range: "50 – 69"  },
-  E: { title: "Critical",  desc: "Blocking issues, needs rework",     range: "< 50"     },
+  A: { title: "Excellent", desc: "Meets all quality gates", range: "95 – 100" },
+  B: { title: "Good", desc: "Minor issues, safe to ship", range: "85 – 94" },
+  C: { title: "Fair", desc: "Noticeable issues, review advised", range: "70 – 84" },
+  D: { title: "Poor", desc: "Multiple failing checks", range: "50 – 69" },
+  E: { title: "Critical", desc: "Blocking issues, needs rework", range: "< 50" },
 };
 
 /** Six dimensions of the weighted grade score. Weights mirror
@@ -52,76 +52,76 @@ const GRADE_DIMENSIONS: {
   tool: string;
   tiers: Tier[];
 }[] = [
-  {
-    name: "Reliability",
-    weight: "25%",
-    tool: "Semgrep bugs",
-    tiers: [
-      { when: "0 bugs",    score: 100 },
-      { when: "1–3 bugs",  score: 80  },
-      { when: "4–10 bugs", score: 50  },
-      { when: "11+ bugs",  score: 20  },
-    ],
-  },
-  {
-    name: "Security",
-    weight: "25%",
-    tool: "Bandit + Gitleaks",
-    tiers: [
-      { when: "Clean",       score: 100 },
-      { when: "Low only",    score: 80  },
-      { when: "Medium only", score: 60  },
-      { when: "High/secret", score: 20  },
-    ],
-  },
-  {
-    name: "Maintainability",
-    weight: "20%",
-    tool: "Tech-debt ratio",
-    tiers: [
-      { when: "≤ 5%",  score: 100 },
-      { when: "≤ 10%", score: 80  },
-      { when: "≤ 20%", score: 60  },
-      { when: "≤ 50%", score: 40  },
-      { when: "> 50%", score: 20  },
-    ],
-  },
-  {
-    name: "Coverage",
-    weight: "15%",
-    tool: "Coverage.py",
-    tiers: [
-      { when: "100%", score: 100 },
-      { when: "75%",  score: 75  },
-      { when: "50%",  score: 50  },
-      { when: "25%",  score: 25  },
-      { when: "0%",   score: 0   },
-    ],
-  },
-  {
-    name: "Duplication",
-    weight: "10%",
-    tool: "jscpd",
-    tiers: [
-      { when: "0%",    score: 100 },
-      { when: "≤ 3%",  score: 80  },
-      { when: "≤ 5%",  score: 60  },
-      { when: "≤ 10%", score: 40  },
-      { when: "> 10%", score: 20  },
-    ],
-  },
-  {
-    name: "Ruff",
-    weight: "5%",
-    tool: "Ruff errors",
-    tiers: [
-      { when: "0 errors",    score: 100 },
-      { when: "1–3 errors",  score: 80  },
-      { when: "4–10 errors", score: 50  },
-      { when: "11+ errors",  score: 20  },
-    ],
-  },
-];
+    {
+      name: "Reliability",
+      weight: "25%",
+      tool: "Semgrep bugs",
+      tiers: [
+        { when: "0 bugs", score: 100 },
+        { when: "1–3 bugs", score: 80 },
+        { when: "4–10 bugs", score: 50 },
+        { when: "11+ bugs", score: 20 },
+      ],
+    },
+    {
+      name: "Security",
+      weight: "25%",
+      tool: "Bandit + Gitleaks",
+      tiers: [
+        { when: "Clean", score: 100 },
+        { when: "Low only", score: 80 },
+        { when: "Medium only", score: 60 },
+        { when: "High/secret", score: 20 },
+      ],
+    },
+    {
+      name: "Maintainability",
+      weight: "20%",
+      tool: "Tech-debt ratio",
+      tiers: [
+        { when: "≤ 5%", score: 100 },
+        { when: "≤ 10%", score: 80 },
+        { when: "≤ 20%", score: 60 },
+        { when: "≤ 50%", score: 40 },
+        { when: "> 50%", score: 20 },
+      ],
+    },
+    {
+      name: "Coverage",
+      weight: "15%",
+      tool: "Coverage.py",
+      tiers: [
+        { when: "100%", score: 100 },
+        { when: "75%", score: 75 },
+        { when: "50%", score: 50 },
+        { when: "25%", score: 25 },
+        { when: "0%", score: 0 },
+      ],
+    },
+    {
+      name: "Duplication",
+      weight: "10%",
+      tool: "jscpd",
+      tiers: [
+        { when: "0%", score: 100 },
+        { when: "≤ 3%", score: 80 },
+        { when: "≤ 5%", score: 60 },
+        { when: "≤ 10%", score: 40 },
+        { when: "> 10%", score: 20 },
+      ],
+    },
+    {
+      name: "Ruff",
+      weight: "5%",
+      tool: "Ruff errors",
+      tiers: [
+        { when: "0 errors", score: 100 },
+        { when: "1–3 errors", score: 80 },
+        { when: "4–10 errors", score: 50 },
+        { when: "11+ errors", score: 20 },
+      ],
+    },
+  ];
 
 /** Background + text classes for a score chip. Green = best, red = worst. */
 function scoreChipClasses(score: number): string {
@@ -211,7 +211,7 @@ export default function OverviewPage() {
   // Total comes from /team (uncapped); pass/fail counts are derived from the
   // listScans slice (capped by the server's `le`). If the dataset exceeds the
   // cap, pass/fail percentages are based on a sample — see the note above.
-  const recentTotal   = totalScans || allScans.length;
+  const recentTotal = totalScans || allScans.length;
   const recentPassing = allScans.filter((s) => s.status === "pass").length;
   const recentFailing = allScans.length - recentPassing;
   const recentPassPct = allScans.length

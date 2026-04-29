@@ -621,14 +621,14 @@ const BENCHMARKS: BenchmarkRow[] = [
     labels: ["Bugs / KLOC", "Bugs/KLOC"],
     metric: { en: "Bugs / KLOC", ja: "バグ / KLOC" },
     tool: "Semgrep",
-    ourThreshold: { en: "Danger ≥ 0", ja: "要対応 ≥ 0" },
+    ourThreshold: { en: "Danger ≥ 0", ja: "危険 ≥ 0" },
     industry: { en: "World-class ≤ 1.0; average 5–15", ja: "優秀 ≤ 1.0、平均 5〜15" },
   },
   {
     labels: ["Vulns / KLOC", "Vulns/KLOC", "Vulnerabilities / KLOC"],
     metric: { en: "Vulnerabilities / KLOC", ja: "脆弱性 / KLOC" },
     tool: "Bandit",
-    ourThreshold: { en: "Danger ≥ 0", ja: "要対応 ≥ 0" },
+    ourThreshold: { en: "Danger ≥ 0", ja: "危険 ≥ 0" },
     industry: { en: "Good ≤ 0.5; concern > 2.0", ja: "良好 ≤ 0.5、要注意 > 2.0" },
   },
   {
@@ -648,14 +648,14 @@ const BENCHMARKS: BenchmarkRow[] = [
     labels: ["Duplication", "Code Duplication"],
     metric: { en: "Code Duplication", ja: "コード重複" },
     tool: "JSCPD",
-    ourThreshold: { en: "Danger ≥ 20%", ja: "要対応 ≥ 20%" },
+    ourThreshold: { en: "Danger ≥ 20%", ja: "危険 ≥ 20%" },
     industry: { en: "Industry standard ≥ 20% ", ja: "業界標準 ≥ 20%" },
   },
   {
     labels: ["Hotspots"],
     metric: { en: "Hotspots (Ruff errors)", ja: "ホットスポット (Ruff エラー)" },
     tool: "Ruff",
-    ourThreshold: { en: "Danger ≥ 0", ja: "要対応 ≥ 0" },
+    ourThreshold: { en: "Danger ≥ 0", ja: "危険 ≥ 0" },
     industry: { en: "Internal — keep at 0 for clean scans", ja: "社内基準 — クリーンなスキャンでは 0 を維持" },
   },
   {
