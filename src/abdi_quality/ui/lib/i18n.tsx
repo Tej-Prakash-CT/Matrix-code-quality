@@ -162,10 +162,10 @@ const en: Dict = {
   "report.scanners.intro":
     "The platform runs the scanners below on every scan. Each tool covers a specific quality dimension — linting, security, bugs, secrets, and duplication.",
   "report.benchmarks.intro":
-    "Industry benchmarks below are commonly cited norms (SonarQube SQALE model, OWASP guidance, peer-reviewed empirical studies). 'Our threshold' is what the platform flags as warning/danger via admin config.",
+    "Industry benchmarks below are commonly cited norms (SonarQube SQALE model, OWASP guidance, peer-reviewed empirical studies). \"CT-set threshold\" is what the platform flags as warning / danger via admin config.",
   "report.benchmarks.metric": "Metric",
   "report.benchmarks.tool": "Tool",
-  "report.benchmarks.ourThreshold": "Our threshold",
+  "report.benchmarks.ourThreshold": "CT-set threshold",
   "report.benchmarks.industry": "Industry benchmark",
   "report.benchmarks.current": "Current value",
   "report.benchmarks.statusGood": "Good",
@@ -332,12 +332,12 @@ const ja: Dict = {
   "report.gradeDistExplainer":
     "システム内の全 {n} 件のスキャンを対象に、品質レターグレード (A が最良、E が最悪) ごとのスキャン数を集計しています。各グレードは 6 つの観点による加重スコアで決まります。詳細はダッシュボードを参照してください。",
   "report.scanners.intro":
-    "スキャンごとに以下のスキャナーが実行されます。各ツールは品質の特定領域 (リンティング、セキュリティ、バグ、シークレット、重複) を担当します。",
+    "本プラットフォームは、各スキャン実行時に以下のスキャナーを自動的に実行します。各ツールは、リンティング、セキュリティ、バグ検出、シークレット検出、コード重複といった特定の品質領域を担当します。",
   "report.benchmarks.intro":
-    "以下の業界ベンチマークは、SonarQube の SQALE モデル、OWASP ガイダンス、査読済みの実証研究などで一般的に参照される値です。「自社しきい値」は管理者設定により 警告 / 危険 として扱う値です。",
+    "以下の業界ベンチマークは、SonarQube の SQALE モデル、OWASP ガイダンス、査読済みの実証研究などで一般的に参照される値です。「CT 設定しきい値」は管理者設定により 警告 / 危険 として扱う値です。",
   "report.benchmarks.metric": "指標",
   "report.benchmarks.tool": "ツール",
-  "report.benchmarks.ourThreshold": "自社しきい値",
+  "report.benchmarks.ourThreshold": "CT 設定しきい値",
   "report.benchmarks.industry": "業界ベンチマーク",
   "report.benchmarks.current": "現在値",
   "report.benchmarks.statusGood": "良好",

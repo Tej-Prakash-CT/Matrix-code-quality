@@ -71,7 +71,9 @@ table + h3 { margin-top: 18px; }
 td.mono, td.right.mono, .kpi-value {
   white-space: nowrap;
   font-feature-settings: "palt" 0;
+  font-variant-east-asian: normal;
   text-spacing-trim: space-all;
+  text-spacing: none;
 }
 /* Keep table column headers on a single line so JP labels like ステータス
    don't break mid-word when columns are tight. */
@@ -221,7 +223,7 @@ function findingsTable(
         <td>${escapeHtml(f.rule_name || f.rule_id)}</td>
         <td>${severityBadge(f.severity, t)}</td>
         <td class="mono">${escapeHtml(f.file)}</td>
-        <td class="right mono">${escapeHtml(f.line ?? "")}</td>
+        <td class="right mono" lang="en">${escapeHtml(f.line ?? "")}</td>
         <td>${escapeHtml(f.message)}</td>
       </tr>`,
     )
@@ -324,7 +326,7 @@ function renderOverviewSection(
       (k) => `
       <div class="kpi ${escapeHtml(k.status)}">
         <div class="kpi-label">${escapeHtml(localizeKpiLabel(k.label, lang))}</div>
-        <div class="kpi-value">${escapeHtml(k.value)}</div>
+        <div class="kpi-value" lang="en">${escapeHtml(k.value)}</div>
       </div>`,
     )
     .join("");
@@ -373,10 +375,10 @@ function renderTeamSection(ctx: BuildContext, data: TeamHealthOut): string {
   const { t, lang } = ctx;
   const kpis = `
     <div class="kpi-grid">
-      <div class="kpi"><div class="kpi-label">${t("team.totalScans")}</div><div class="kpi-value">${data.total_scans}</div></div>
-      <div class="kpi ${data.pass_rate >= 80 ? "good" : data.pass_rate >= 50 ? "warning" : "danger"}"><div class="kpi-label">${t("team.passRate")}</div><div class="kpi-value">${data.pass_rate.toFixed(1)}%</div></div>
-      <div class="kpi ${data.failing_prs === 0 ? "good" : "danger"}"><div class="kpi-label">${t("team.failingPrs")}</div><div class="kpi-value">${data.failing_prs}</div></div>
-      <div class="kpi"><div class="kpi-label">${t("team.activeAuthors")}</div><div class="kpi-value">${data.active_authors}</div></div>
+      <div class="kpi"><div class="kpi-label">${t("team.totalScans")}</div><div class="kpi-value" lang="en">${data.total_scans}</div></div>
+      <div class="kpi ${data.pass_rate >= 80 ? "good" : data.pass_rate >= 50 ? "warning" : "danger"}"><div class="kpi-label">${t("team.passRate")}</div><div class="kpi-value" lang="en">${data.pass_rate.toFixed(1)}%</div></div>
+      <div class="kpi ${data.failing_prs === 0 ? "good" : "danger"}"><div class="kpi-label">${t("team.failingPrs")}</div><div class="kpi-value" lang="en">${data.failing_prs}</div></div>
+      <div class="kpi"><div class="kpi-label">${t("team.activeAuthors")}</div><div class="kpi-value" lang="en">${data.active_authors}</div></div>
     </div>
   `;
 
@@ -458,10 +460,10 @@ function renderSecuritySection(
   const { t } = ctx;
   const kpis = `
     <div class="kpi-grid">
-      <div class="kpi ${data.total_vulnerabilities === 0 ? "good" : "danger"}"><div class="kpi-label">${t("security.totalVulns")}</div><div class="kpi-value">${data.total_vulnerabilities}</div></div>
-      <div class="kpi ${data.total_secrets === 0 ? "good" : "danger"}"><div class="kpi-label">${t("security.totalSecrets")}</div><div class="kpi-value">${data.total_secrets}</div></div>
-      <div class="kpi ${data.bandit_severity.high === 0 ? "good" : "danger"}"><div class="kpi-label">${t("security.highSeverity")}</div><div class="kpi-value">${data.bandit_severity.high}</div></div>
-      <div class="kpi"><div class="kpi-label">${t("security.owaspCategories")}</div><div class="kpi-value">${data.owasp_categories.length}</div></div>
+      <div class="kpi ${data.total_vulnerabilities === 0 ? "good" : "danger"}"><div class="kpi-label">${t("security.totalVulns")}</div><div class="kpi-value" lang="en">${data.total_vulnerabilities}</div></div>
+      <div class="kpi ${data.total_secrets === 0 ? "good" : "danger"}"><div class="kpi-label">${t("security.totalSecrets")}</div><div class="kpi-value" lang="en">${data.total_secrets}</div></div>
+      <div class="kpi ${data.bandit_severity.high === 0 ? "good" : "danger"}"><div class="kpi-label">${t("security.highSeverity")}</div><div class="kpi-value" lang="en">${data.bandit_severity.high}</div></div>
+      <div class="kpi"><div class="kpi-label">${t("security.owaspCategories")}</div><div class="kpi-value" lang="en">${data.owasp_categories.length}</div></div>
     </div>
   `;
 
@@ -616,6 +618,68 @@ interface BenchmarkRow {
 
 // Thresholds mirror the deployed admin config (see backend/admin_config.json).
 // Update both places in lock-step if the platform's defaults change.
+// const BENCHMARKS: BenchmarkRow[] = [
+//   {
+//     labels: ["Bugs / KLOC", "Bugs/KLOC"],
+//     metric: { en: "Bugs / KLOC", ja: "バグ / KLOC" },
+//     tool: "Semgrep",
+//     ourThreshold: { en: "Danger ≥ 0", ja: "危険 ≥ 0" },
+//     industry: { en: "World-class ≤ 1.0; average 5–15", ja: "優秀 ≤ 1.0、平均 5〜15" },
+//   },
+//   {
+//     labels: ["Vulns / KLOC", "Vulns/KLOC", "Vulnerabilities / KLOC"],
+//     metric: { en: "Vulnerabilities / KLOC", ja: "脆弱性 / KLOC" },
+//     tool: "Bandit",
+//     ourThreshold: { en: "Danger ≥ 0", ja: "危険 ≥ 0" },
+//     industry: { en: "Good ≤ 0.5; concern > 2.0", ja: "良好 ≤ 0.5、要注意 > 2.0" },
+//   },
+//   {
+//     labels: ["Tech Debt", "Tech Debt Ratio", "Technical Debt"],
+//     metric: { en: "Tech Debt Ratio", ja: "技術的負債比率" },
+//     tool: "Weighted",
+//     ourThreshold: {
+//       en: "SQALE: A ≤ 5%, B ≤ 10%, C ≤ 20%, D ≤ 50%, E > 50%",
+//       ja: "SQALE: A ≤ 5%、B ≤ 10%、C ≤ 20%、D ≤ 50%、E > 50%",
+//     },
+//     industry: {
+//       en: "SQALE: A ≤ 5%, B ≤ 10%, C ≤ 20%, D ≤ 50%, E > 50%",
+//       ja: "SQALE: A ≤ 5%、B ≤ 10%、C ≤ 20%、D ≤ 50%、E > 50%",
+//     },
+//   },
+//   {
+//     labels: ["Duplication", "Code Duplication"],
+//     metric: { en: "Code Duplication", ja: "コード重複" },
+//     tool: "JSCPD",
+//     ourThreshold: { en: "Good ≤ 20%, Danger > 20%", ja: "良好 ≤ 20%、危険 > 20%" },
+//     industry: { en: "Good ≤ 20%, Danger > 20%", ja: "良好 ≤ 20%、危険 > 20%" },
+//   },
+//   {
+//     labels: ["Hotspots"],
+//     metric: { en: "Hotspots (Ruff errors)", ja: "ホットスポット (Ruff エラー)" },
+//     tool: "Ruff",
+//     ourThreshold: { en: "Danger ≥ 0", ja: "危険 ≥ 0" },
+//     industry: { en: "Internal — keep at 0 for clean scans", ja: "社内基準 — クリーンなスキャンでは 0 を維持" },
+//   },
+//   {
+//     // No backing kpi_card — current value column will render "—" but the row
+//     // documents how the weighted grade maps to letter grades for readers.
+//     labels: ["Quality Grade"],
+//     metric: { en: "Quality Grade Distribution", ja: "品質グレード分布" },
+//     tool: "Weighted",
+//     ourThreshold: {
+//       en: "A ≥ 95, B ≥ 85, C ≥ 70, D ≥ 50, E < 50 · failing scans floored at D",
+//       ja: "A ≥ 95、B ≥ 85、C ≥ 70、D ≥ 50、E < 50 ・ 失敗スキャンは最高 D",
+//     },
+//     industry: {
+//       en: "A: Excellent · B: Good · C: Fair · D: Poor · E: Critical (weighted across reliability, security, maintainability, duplication, hotspots)",
+//       ja: "A: 優秀・B: 良好・C: 普通・D: 不良・E: 重大\n（信頼性、セキュリティ、保守性、ホットスポットを加重平均し評価されます）",
+//     },
+//   },
+// ];
+
+
+// Thresholds mirror the deployed admin config (see backend/admin_config.json).
+// Update both places in lock-step if the platform's defaults change.
 const BENCHMARKS: BenchmarkRow[] = [
   {
     labels: ["Bugs / KLOC", "Bugs/KLOC"],
@@ -648,15 +712,30 @@ const BENCHMARKS: BenchmarkRow[] = [
     labels: ["Duplication", "Code Duplication"],
     metric: { en: "Code Duplication", ja: "コード重複" },
     tool: "JSCPD",
-    ourThreshold: { en: "Danger ≥ 20%", ja: "危険 ≥ 20%" },
-    industry: { en: "Industry standard ≥ 20% ", ja: "業界標準 ≥ 20%" },
+    ourThreshold: { en: "Good ≤ 20%, Danger > 20%", ja: "良好 ≤ 20%、危険 > 20%" },
+    // FIX (comment 1): Industry side previously mirrored CT's threshold,
+    // making the two columns identical. Industry tolerates higher duplication
+    // before flagging — reflect that with a warning band 20–40% and danger
+    // only above 40%, so the report shows CT is *stricter* than industry.
+    industry: {
+      en: "Good ≤ 20%, Warning 20–40%, Danger > 40%",
+      ja: "良好 ≤ 20%、警告 20–40%、危険 > 40%",
+    },
   },
   {
     labels: ["Hotspots"],
     metric: { en: "Hotspots (Ruff errors)", ja: "ホットスポット (Ruff エラー)" },
     tool: "Ruff",
     ourThreshold: { en: "Danger ≥ 0", ja: "危険 ≥ 0" },
-    industry: { en: "Internal — keep at 0 for clean scans", ja: "社内基準 — クリーンなスキャンでは 0 を維持" },
+    // FIX (comment 4): Removed the "Internal —" / "社内基準 —" prefix.
+    // The column header is *industry benchmark*; saying "internal standard"
+    // here contradicts the column and confused the JP reviewer (社内基準
+    // means "internal company standard"). Ruff hotspots have no real
+    // industry benchmark, so just state the operational guidance.
+    industry: {
+      en: "Keep at 0 for clean PRs",
+      ja: "クリーンな PR では 0 を維持",
+    },
   },
   {
     // No backing kpi_card — current value column will render "—" but the row
@@ -664,13 +743,17 @@ const BENCHMARKS: BenchmarkRow[] = [
     labels: ["Quality Grade"],
     metric: { en: "Quality Grade Distribution", ja: "品質グレード分布" },
     tool: "Weighted",
+    // FIX (comment 5): Split into two lines via "\n" (rendered as <br>) and
+    // reworded the second sentence to the client-supplied phrasing
+    // "スキャン失敗の場合、評価は D を下限とする". The previous "・ 失敗スキャンは最高 D"
+    // ran on as a single line and used unclear wording.
     ourThreshold: {
-      en: "A ≥ 95, B ≥ 85, C ≥ 70, D ≥ 50, E < 50 · failing scans floored at D",
-      ja: "A ≥ 95、B ≥ 85、C ≥ 70、D ≥ 50、E < 50 ・ 失敗スキャンは最高 D",
+      en: "A ≥ 95, B ≥ 85, C ≥ 70, D ≥ 50, E < 50\nFailed scans are floored at grade D",
+      ja: "A ≥ 95、B ≥ 85、C ≥ 70、D ≥ 50、E < 50\nスキャン失敗の場合、評価は D を下限とする",
     },
     industry: {
       en: "A: Excellent · B: Good · C: Fair · D: Poor · E: Critical (weighted across reliability, security, maintainability, duplication, hotspots)",
-      ja: "A: 優秀・B: 良好・C: 普通・D: 不良・E: 重大（信頼性、セキュリティ、保守性、重複、ホットスポットの加重平均）",
+      ja: "A: 優秀・B: 良好・C: 普通・D: 不良・E: 重大\n（信頼性、セキュリティ、保守性、ホットスポットを加重平均し評価されます）",
     },
   },
 ];
@@ -721,9 +804,9 @@ function renderBenchmarks(ctx: BuildContext, overview: OverviewOut): string {
       <tr>
         <td><strong>${escapeHtml(b.metric[lang])}</strong></td>
         <td>${escapeHtml(b.tool)}</td>
-        <td>${escapeHtml(b.ourThreshold[lang])}</td>
-        <td>${escapeHtml(b.industry[lang])}</td>
-        <td class="right mono">${escapeHtml(value)}</td>
+        <td>${escapeHtml(b.ourThreshold[lang]).replace(/\n/g, "<br>")}</td>
+        <td>${escapeHtml(b.industry[lang]).replace(/\n/g, "<br>")}</td>
+        <td class="right mono" lang="en">${escapeHtml(value)}</td>
         <td>${badge}</td>
       </tr>`;
   }).join("");
@@ -760,9 +843,9 @@ function renderGradeBreakdown(ctx: BuildContext, data: ScanDetailOut): string {
       <tr>
         <td><strong>${escapeHtml(d.name)}</strong></td>
         <td>${escapeHtml(d.raw_value)}</td>
-        <td class="right mono">${d.score.toFixed(0)}</td>
-        <td class="right mono">${(d.weight * 100).toFixed(0)}%</td>
-        <td class="right mono">${d.contribution.toFixed(1)}</td>
+        <td class="right mono" lang="en">${d.score.toFixed(0)}</td>
+        <td class="right mono" lang="en">${(d.weight * 100).toFixed(0)}%</td>
+        <td class="right mono" lang="en">${d.contribution.toFixed(1)}</td>
       </tr>`,
     )
     .join("");
@@ -791,7 +874,7 @@ function renderGradeBreakdown(ctx: BuildContext, data: ScanDetailOut): string {
         ${rows}
         <tr>
           <td colspan="4"><strong>${escapeHtml(t("report.gradeBreakdown.weightedTotal"))}</strong></td>
-          <td class="right mono"><strong>${b.weighted_total.toFixed(1)}</strong></td>
+          <td class="right mono" lang="en"><strong>${b.weighted_total.toFixed(1)}</strong></td>
         </tr>
       </tbody>
     </table>
@@ -809,7 +892,7 @@ function renderPrSection(ctx: BuildContext, data: ScanDetailOut): string {
       (k) => `
       <div class="kpi ${escapeHtml(k.status)}">
         <div class="kpi-label">${escapeHtml(localizeKpiLabel(k.label, lang))}</div>
-        <div class="kpi-value">${escapeHtml(k.value)}</div>
+        <div class="kpi-value" lang="en">${escapeHtml(k.value)}</div>
       </div>`,
     )
     .join("");
