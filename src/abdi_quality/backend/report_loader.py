@@ -12,9 +12,12 @@ VOLUME_PATH_UC = "/Volumes/abs_metadata_dev/code_quality/reports"
 MOCK_VOLUME = Path(__file__).resolve().parents[3] / "mock_volume"
 REPORT_FILE_RE = re.compile(r"^pr\-(\d+)\-([a-f0-9]+)\.json$")
 
-# Simple cache
+# Simple cache. TTL bumped from 60s to 600s (10 min) as Phase 1 of the
+# read-path fix — file-walking 150+ JSON reports from UC Volume costs ~45s
+# per cold load, so the longer TTL keeps 99% of users on the fast cached
+# path. The proper fix is a Delta-table read path (see project docs).
 _cache: dict[str, Any] = {"reports": None, "timestamp": 0}
-_CACHE_TTL = 60
+_CACHE_TTL = 600
 
 
 def _get_sdk():
