@@ -334,7 +334,7 @@ const ja: Dict = {
   "report.scanners.intro":
     "スキャンごとに以下のスキャナーが実行されます。各ツールは品質の特定領域 (リンティング、セキュリティ、バグ、シークレット、重複) を担当します。",
   "report.benchmarks.intro":
-    "以下の業界ベンチマークは、SonarQube の SQALE モデル、OWASP ガイダンス、査読済みの実証研究などで一般的に参照される値です。「自社しきい値」は管理者設定により warning / danger として扱う値です。",
+    "以下の業界ベンチマークは、SonarQube の SQALE モデル、OWASP ガイダンス、査読済みの実証研究などで一般的に参照される値です。「自社しきい値」は管理者設定により 警告 / 危険 として扱う値です。",
   "report.benchmarks.metric": "指標",
   "report.benchmarks.tool": "ツール",
   "report.benchmarks.ourThreshold": "自社しきい値",
