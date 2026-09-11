@@ -1,0 +1,48 @@
+name: Load Test (Self-Hosted Runners)
+
+on:
+  workflow_dispatch:
+    inputs:
+      parallelism:
+        description: 'Max parallel jobs (1-10) — test the autoscaler ceiling'
+        type: number
+        default: 9
+      duration:
+        description: 'Work duration per job in seconds (how long each runner stays busy)'
+        type: number
+        default: 120
+      load_iterations:
+        description: 'CPU iterations per job (10000000 = ~0.5s CPU burst)'
+        type: number
+        default: 10000000
+
+jobs:
+  load-test:
+    name: "Load shard ${{ matrix.shard }}/10"
+    runs-on: [self-hosted, linux, x64]
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ inputs.parallelism }}
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - name: Identify runner
+        run: |
+          echo "=== Load shard ${{ matrix.shard }}/10 ==="
+          echo "Container : $(hostname)"
+          echo "Instance  : $(docker inspect -f '{{.Name}}/{{.Id}}' $(hostname) 2>/dev/null || echo n/a)"
+          echo "Started   : $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "CPU cores : $(nproc)"
+          echo "Memory    : $(free -h | awk '/Mem:/{print $2}')"
+
+      - name: CPU burst (simulated work)
+        run: |
+          echo "CPU burst: ${{ inputs.load_iterations }} iterations"
+          python3 -c "sum(range(${{ inputs.load_iterations }}))"
+          echo "CPU burst complete @ $(date -u '+%H:%M:%S UTC')"
+
+      - name: Keep runner busy (autoscaler observation window)
+        run: |
+          echo "Working for ${{ inputs.duration }}s..."
+          sleep ${{ inputs.duration }}
+          echo "Completed @ $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
