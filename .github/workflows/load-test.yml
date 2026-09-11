@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       parallelism:
-        description: 'Max parallel jobs (1-10) — test the autoscaler ceiling'
+        description: 'Number of parallel jobs (1-10) — test the autoscaler ceiling'
         type: number
-        default: 9
+        default: 5
       duration:
         description: 'Work duration per job in seconds (how long each runner stays busy)'
         type: number
@@ -17,20 +17,32 @@ on:
         default: 10000000
 
 jobs:
+  prepare:
+    name: Generate shard matrix
+    runs-on: [self-hosted, linux, x64]
+    outputs:
+      shards: ${{ steps.gen.outputs.shards }}
+    steps:
+      - name: Generate shard list from parallelism input
+        id: gen
+        run: |
+          # max-parallel cannot take expressions, so number of jobs is
+          # produced via a dynamic matrix instead of strategy.max-parallel.
+          echo "shards=$(python3 -c "import json; print(json.dumps(list(range(1, ${{ inputs.parallelism }} + 1))))")" >> "$GITHUB_OUTPUT"
+
   load-test:
-    name: "Load shard ${{ matrix.shard }}/10"
+    name: "Load shard ${{ matrix.shard }}"
+    needs: prepare
     runs-on: [self-hosted, linux, x64]
     strategy:
       fail-fast: false
-      max-parallel: ${{ inputs.parallelism }}
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        shard: ${{ fromJSON(needs.prepare.outputs.shards) }}
     steps:
       - name: Identify runner
         run: |
-          echo "=== Load shard ${{ matrix.shard }}/10 ==="
+          echo "=== Load shard ${{ matrix.shard }} ==="
           echo "Container : $(hostname)"
-          echo "Instance  : $(docker inspect -f '{{.Name}}/{{.Id}}' $(hostname) 2>/dev/null || echo n/a)"
           echo "Started   : $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           echo "CPU cores : $(nproc)"
           echo "Memory    : $(free -h | awk '/Mem:/{print $2}')"
